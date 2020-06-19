@@ -143,19 +143,30 @@ def order(type):
         print('invalid!')
 
 def spinbox_spread_value_changed(*args):
-    Tick.spread_max = args[0].get()
+    try:
+        spread_max = args[0].get()
+    except Exception as e:
+        if e.args != ():
+            write_log(e.args)
+        Tick.spread_max = 0.0
+        return
+
+    if spread_max < 0.0:
+        Tick.spread_max = 0.0
+    elif 1000000.0 < spread_max:
+        Tick.spread_max = 1000000.0
+    else:
+        Tick.spread_max = spread_max
 
 def open_log():
     if Log.is_enabled_to_write_a_log_file:
         Log.fd = open('log.txt', 'w')
 
 def write_log(msg):
-    print('foo')
     if Log.is_enabled_to_write_a_log_file:
         Log.fd.write(msg)
     else:
         print(msg)
-    print('piyo')
 
 def close_log():
     if Log.is_enabled_to_write_a_log_file:

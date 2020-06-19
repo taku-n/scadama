@@ -1,4 +1,5 @@
 *.ex5
 
 .vscode/
+.ionide/
 log.txt
