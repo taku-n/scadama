@@ -1,5 +1,6 @@
 from multiprocessing import *
-from sys import exit
+import os
+import sys
 from time import sleep
 from threading import *
 from tkinter import *
@@ -54,7 +55,7 @@ def main():
         write_log('MetaTrader5.initialize() failed.')
         mt5.shutdown()
         close_log()
-        exit()
+        sys.exit()
 
     write_log('Writing MetaTrader5.version()...')
     write_log(mt5.version())
@@ -73,7 +74,7 @@ def main():
     thread.start()
 
     write_log('Starting a process...')
-    process = Process(target = send_tick, args = (pipe_tick_tx, pipe_ctrl_rx))
+    process = Process(target = send_tick_ctrl, args = (pipe_ctrl_rx, pipe_tick_tx))
     process.start()
 
     ctrl = Ctrl()
@@ -88,6 +89,7 @@ def main():
     write_log('Terminating the child process...')
     ctrl.is_terminating = True
     pipe_ctrl_tx.send(ctrl)
+    sleep(1)             # Wait for MetaTrader5.shutdown() in send_tick_ctrl().
     process.terminate()  # Kill the child process.
     process.join()       # Wait to finish killing.
 
@@ -98,27 +100,41 @@ def main():
     pipe_ctrl_tx.close()
 
     write_log('Shutting down the MetaTrader5 connection...')
-    sleep(1)
     mt5.shutdown()
-    sleep(1)
 
     write_log('Closing the log...')
     close_log()
-    sleep(1)
+
+    print('The program ends.')
 
 def open_log():
     if Log.is_enabled_to_write_a_log_file:
         Log.fd = open('log.txt', 'w')
 
 def write_log(msg):
+    print('foo')
     if Log.is_enabled_to_write_a_log_file:
         Log.fd.write(msg)
     else:
-        print(msg)
+        print(msg, flush = True)
+    print('piyo')
 
 def close_log():
     if Log.is_enabled_to_write_a_log_file:
         Log.fd.close()
+
+def send_error(pipe, msg):
+    try:
+        pipe.send({'error': msg})
+    except:
+        pass
+
+def send_info(pipe, msg):
+    try:
+        pipe.send({'info': msg})
+        print('fuga')
+    except:
+        pass
 
 def recv_tick(pipe, button_bid, button_ask):  # Runs in a thread.
     tick = None
@@ -126,72 +142,74 @@ def recv_tick(pipe, button_bid, button_ask):  # Runs in a thread.
     while True:
         try:
             tick = pipe.recv()
+            print('received')
         except Exception as e:
             if e.args != ():
                 write_log(e.args)
-            exit()
+            sys.exit()
 
-        write_log('Rewriting a tick...')
-        button_bid.configure(text = tick)
+        #write_log(tick)
+        print(tick)
+        try:
+            button_bid.configure(text = tick)
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
 
-def send_tick(pipe, pipe_ctrl):  # Runs in a process.
-    write_log('Initializing MetaTrader5 in send_tick()...')
+def send_tick_ctrl(pipe_ctrl, pipe):  # Runs in a child process.
     if not mt5.initialize():
-        #pipe.send('MetaTrader5.initialize() in send_tick() failed.') as a dictionary?
+        send_error(pipe, 'MetaTrader5.initialize() in send_tick_ctrl() failed.')
         mt5.shutdown()
-        exit()
+        sys.exit()
 
     ctrl = None
 
-    thread = Thread(target = send_tick_ctrl, args = (pipe_ctrl, mt5, ctrl))
-    thread.start()
-
     try:
         ctrl = pipe_ctrl.recv()
-    except Exception as e:
-        if e.args != ():
-            write_log(e.args)
-        exit()
+    except:
+        sys.exit()
 
-    tick = None
+    thread = Thread(target = send_tick, args = (pipe, mt5, ctrl))
+    thread.start()
 
     while True:
-        write_log('Polling data of ctrl...')
         try:
-            if pipe_ctrl.poll():
-                write_log('Getting data of ctrl...')
-                ctrl = pipe_ctrl.recv()
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            exit()
-
-        write_log('ctrl:')
-        write_log(ctrl)
-        write_log('ctrl.is_terminating:')
-        write_log(ctrl.is_terminating)
-        write_log('ctrl.symbol:')
-        write_log(ctrl.symbol)
+            ctrl = pipe_ctrl.recv()
+        except:
+            sys.exit()
 
         if ctrl.is_terminating:
             mt5.shutdown()
-            sleep(1)
-            exit()
 
-        write_log('Getting a tick...')
-        tick = mt5.symbol_info_tick(ctrl.symbol)._asdict()
+            # BUG:
+            # I dont know why but this information is not received
+            # when you close this application
+            # with clicking the top left icon of its window, waiting for a while and clicking Close in the menu.
+            # Ofcourse this information doesnt show.
+            # This problem occurs too when you run this program for a long time.
+            send_info(pipe, 'MetaTrader5.shutdown() in send_tick_ctrl() ends.')
 
+            sys.exit()
+
+def send_tick(pipe, mt5, ctrl):  # Runs in a thread of a child process.
+    last_tick = None
+
+    while True:
         try:
-            pipe.send(tick)
+            tick = mt5.symbol_info_tick(ctrl.symbol)._asdict()  # Non-blocking
         except Exception as e:
             if e.args != ():
-                write_log(e.args)
-            exit()
+                send_error(pipe, e.args)
+            sys.exit()
 
+        if tick != last_tick:
+            try:
+                pipe.send(tick)
+            except:
+                sys.exit()
+
+        last_tick = tick
         sleep(0.001)
-
-def send_tick_ctrl(pipe_ctrl, mt5, ctrl):  # Runs in a thread of a child process.
-    pass
 
 # UNIX like OSes dont need to check if the module is __main__ but for Windows, it is essential.
 # Since Windows doesnt have the fork system call,
@@ -199,6 +217,10 @@ def send_tick_ctrl(pipe_ctrl, mt5, ctrl):  # Runs in a thread of a child process
 if __name__ == '__main__':
     freeze_support()  # Windows Only needs this line.
     main()
+
+    # Without this line, you cant back to your command prompt.
+    # Without this line, maybe one or two processes keep alive but i cant figure out.
+    os._exit(1)
 
 # RuntimeError:
 #         An attempt has been made to start a new process before the
