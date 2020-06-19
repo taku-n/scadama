@@ -75,4 +75,5 @@ def deletion(q):
 
     pythoncom.CoUninitialize()
 
-main()
+if __name__ == '__main__':
+    main()

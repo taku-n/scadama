@@ -1,3 +1,5 @@
+import datetime
+from functools import partial
 from multiprocessing import *
 import os
 import sys
@@ -19,6 +21,13 @@ class Ctrl:
         self.is_terminating = False
         self.symbol = None
 
+class Tick:
+    symbol = ''
+    bid = 0.0
+    ask = 0.0
+    spread = 0.0
+    spread_max = 0.0
+
 def main():
     open_log()
 
@@ -28,19 +37,36 @@ def main():
 
     # root
 
+    frame_time = Frame(root)
     frame_order = Frame(root)
+    frame_close = Frame(root)
     frame_status = Frame(root)
     
-    frame_order.pack(side = 'top', expand = True, fill = BOTH)
-    frame_status.pack(side = 'bottom', expand = True, fill = BOTH)
-    
+    frame_time.pack(side = TOP, expand = True, fill = BOTH)
+    frame_order.pack(side = TOP, expand = True, fill = BOTH)
+    frame_close.pack(side = TOP, expand = True, fill = BOTH)
+    frame_status.pack(side = TOP, expand = True, fill = BOTH)
+
+    # root -> frame_time
+
+    label_time = Label(frame_time)
+
+    label_time.pack(side = TOP, expand = True, fill = BOTH)
+
     # root -> frame_order
 
-    button_bid = Button(frame_order)
-    button_ask = Button(frame_order)
+    button_bid = Button(frame_order, command = partial(order, 'BID'))
+    button_ask = Button(frame_order, command = partial(order, 'ASK'))
+    spinbox_spread_value = DoubleVar(value = 0.0)
+    spinbox_spread_value.trace('w', partial(spinbox_spread_value_changed, spinbox_spread_value))
+    spinbox_spread = Spinbox(frame_order, textvariable = spinbox_spread_value,
+            from_ = 0.0, increment = 0.1, to = 1000000.0, format = '%.1f')
+    label_spread = Label(frame_order)
 
-    button_bid.pack(side = 'left', expand = True, fill = BOTH)
-    button_ask.pack(side = 'right', expand = True, fill = BOTH)
+    button_bid.pack(side = LEFT, expand = True, fill = BOTH)
+    button_ask.pack(side = RIGHT, expand = True, fill = BOTH)
+    spinbox_spread.pack(side = TOP, expand = True, fill = BOTH)
+    label_spread.pack(side = BOTTOM, expand = True, fill = BOTH)
 
     # root -> frame_status
 
@@ -70,7 +96,7 @@ def main():
     pipe_ctrl_rx, pipe_ctrl_tx = Pipe(False)  # Interprocess Communication for controling a process.
 
     write_log('Starting a thread...')
-    thread = Thread(target = recv_tick, args = (pipe_tick_rx, button_bid, button_ask))
+    thread = Thread(target = recv_tick, args = (pipe_tick_rx, label_time, button_bid, button_ask, label_spread))
     thread.start()
 
     write_log('Starting a process...')
@@ -80,6 +106,7 @@ def main():
     ctrl = Ctrl()
     ctrl.symbol = 'EURUSD'
     pipe_ctrl_tx.send(ctrl)
+    Tick.symbol = 'EURUSD'
 
     write_log('Starting the mainloop...')
     root.mainloop()
@@ -107,6 +134,17 @@ def main():
 
     print('The program ends.')
 
+def order(type):
+    if type == 'ASK':
+        print('ask!')
+    elif type == 'BID':
+        print('bid!')
+    else:
+        print('invalid!')
+
+def spinbox_spread_value_changed(*args):
+    Tick.spread_max = args[0].get()
+
 def open_log():
     if Log.is_enabled_to_write_a_log_file:
         Log.fd = open('log.txt', 'w')
@@ -116,7 +154,7 @@ def write_log(msg):
     if Log.is_enabled_to_write_a_log_file:
         Log.fd.write(msg)
     else:
-        print(msg, flush = True)
+        print(msg)
     print('piyo')
 
 def close_log():
@@ -136,25 +174,84 @@ def send_info(pipe, msg):
     except:
         pass
 
-def recv_tick(pipe, button_bid, button_ask):  # Runs in a thread.
-    tick = None
-
+def recv_tick(pipe, label_time, button_bid, button_ask, label_spread):  # Runs in a thread.
     while True:
+        # Get a tick.
+
         try:
             tick = pipe.recv()
-            print('received')
         except Exception as e:
             if e.args != ():
                 write_log(e.args)
             sys.exit()
 
-        #write_log(tick)
-        print(tick)
+        write_log(tick)
+
+        # Show the servers local time.
+
         try:
-            button_bid.configure(text = tick)
+            time = tick['time']
         except Exception as e:
             if e.args != ():
                 write_log(e.args)
+            sys.exit()
+
+        # This doesnt mean it is UTC but a servers local time.
+        time_zone = datetime.timezone(datetime.timedelta(hours = 0))
+
+        time = datetime.datetime.fromtimestamp(time, time_zone)
+        time = f'{time:%Y.%m.%d %a %H:%M:%S}'  # f-string
+
+        try:
+            label_time.configure(text = time)
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
+            sys.exit()
+
+        # Show ask, bid and spread.
+
+        try:
+            ask = tick['ask']
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
+            sys.exit()
+
+        Tick.ask = ask
+
+        try:
+            bid = tick['bid']
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
+            sys.exit()
+
+        Tick.bid = bid
+
+        spread = (ask - bid) * 10000.0
+        Tick.spread = spread
+
+        try:
+            button_ask.configure(text = f'{ask:.5f}')
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
+            sys.exit()
+
+        try:
+            button_bid.configure(text = f'{bid:.5f}')
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
+            sys.exit()
+
+        try:
+            label_spread.configure(text = f'{spread:.1f}')
+        except Exception as e:
+            if e.args != ():
+                write_log(e.args)
+            sys.exit()
 
 def send_tick_ctrl(pipe_ctrl, pipe):  # Runs in a child process.
     if not mt5.initialize():
