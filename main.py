@@ -2,6 +2,7 @@ import datetime
 from functools import partial
 from multiprocessing import *
 import os
+from queue import Queue
 import sys
 from time import sleep
 from threading import *
@@ -21,17 +22,16 @@ class Symbols:
     total = 0
     symbols = []
     infos = {}
-    selection = ''
 
 class Ctrl:
-    def __init__(self):
+    def __init__(self, symbol):
         self.is_terminating = False
-        self.symbol = None
+        self.symbol = symbol
 
-class Tick:  # This is set every time recv_tick() receives a tick.
+class Tick:  # This class except spread_max is set every time recv_tick() receives a tick.
     symbol = ''
-    bid = 0.0
     ask = 0.0
+    bid = 0.0
     spread = 0.0
     spread_max = 0.0
 
@@ -110,11 +110,7 @@ def main():
     print('symbols:', Symbols.symbols)
     print('infos:', Symbols.infos)
 
-    combobox_symbol.configure(values = Symbols.symbols)
-    combobox_symbol.current(0)  # The initial value of the Combobox.
-    Symbols.selection = combobox_symbol.get()
-    combobox_symbol.bind('<<ComboboxSelected>>', partial(symbol_changed, combobox_symbol))
-
+    # Using pipes because it is faster than queues.
     # Dont use bidirectional pipes (Pipe(True)) because they seem unstable.
     write_log('Opening pipes...')
     pipe_tick_rx, pipe_tick_tx = Pipe(False)  # Interprocess Communication for ticks.
@@ -130,10 +126,13 @@ def main():
     process = Process(target = send_tick_ctrl, args = (pipe_ctrl_rx, pipe_tick_tx))
     process.start()
 
-    ctrl = Ctrl()
-    ctrl.symbol = Symbols.symbols[0]
+    ctrl = Ctrl(Symbols.symbols[0])
     pipe_ctrl_tx.send(ctrl)
-    Tick.symbol = Symbols.symbols[0]
+
+    combobox_symbol.configure(values = Symbols.symbols)  # Set a list to this Combobox.
+    combobox_symbol.current(0)                           # The initial value of the Combobox.
+    combobox_symbol.bind('<<ComboboxSelected>>',
+            partial(symbol_changed, combobox_symbol, pipe_ctrl_tx))
 
     write_log('Starting the mainloop...')
     root.mainloop()
@@ -161,9 +160,11 @@ def main():
 
     print('The program ends.')
 
-def symbol_changed(combobox, event):
-    Symbols.selection = combobox.get()
-    print(Symbols.selection)
+def symbol_changed(combobox, pipe_ctrl, event):
+    symbol = combobox.get()
+
+    ctrl = Ctrl(symbol)
+    pipe_ctrl.send(ctrl)
 
 def order(type):
     if type == 'ASK':
@@ -203,13 +204,13 @@ def close_log():
     if Log.is_enabled_to_write_a_log_file:
         Log.fd.close()
 
-def send_error(pipe, msg):
+def send_error(pipe, msg):  # For a process to send a tick.
     try:
         pipe.send({'error': msg})
     except:
         pass
 
-def send_info(pipe, msg):
+def send_info(pipe, msg):  # For a process to send a tick.
     try:
         pipe.send({'info': msg})
     except:
@@ -249,6 +250,9 @@ def recv_tick(pipe, label_time, button_bid, button_ask, label_spread):  # Runs i
             if e.args != ():
                 write_log(e.args)
             sys.exit()
+
+        # Set a symbol.
+        Tick.symbol = tick['symbol']
 
         # Show ask, bid and spread.
 
@@ -300,21 +304,27 @@ def send_tick_ctrl(pipe_ctrl, pipe):  # Runs in a child process.
         mt5.shutdown()
         sys.exit()
 
-    ctrl = None
-
     try:
         ctrl = pipe_ctrl.recv()  # Blocking until this gets a first control signal.
     except:
         sys.exit()
 
-    thread = Thread(target = send_tick, args = (pipe, mt5, ctrl))
+    q = Queue()
+    q.put(ctrl.symbol)
+
+    thread = Thread(target = send_tick, args = (pipe, mt5, q))
     thread.start()
+
+    last_symbol = ctrl.symbol
 
     while True:
         try:
             ctrl = pipe_ctrl.recv()
         except:
             sys.exit()
+
+        if ctrl.symbol != last_symbol:
+            q.put(ctrl.symbol)
 
         if ctrl.is_terminating:
             mt5.shutdown()
@@ -329,16 +339,22 @@ def send_tick_ctrl(pipe_ctrl, pipe):  # Runs in a child process.
 
             sys.exit()
 
-def send_tick(pipe, mt5, ctrl):  # Runs in a thread of a child process.
+def send_tick(pipe, mt5, q):  # Runs in a thread of a child process.
+    symbol = q.get()
     last_tick = None
 
     while True:
+        if not q.empty():
+            symbol = q.get()
+
         try:
-            tick = mt5.symbol_info_tick(ctrl.symbol)._asdict()  # Non-blocking
+            tick = mt5.symbol_info_tick(symbol)._asdict()  # Non-blocking
         except Exception as e:
             if e.args != ():
                 send_error(pipe, e.args)
             sys.exit()
+
+        tick['symbol'] = symbol
 
         if tick != last_tick:
             try:
