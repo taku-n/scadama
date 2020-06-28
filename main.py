@@ -6,6 +6,7 @@ import sys
 from time import sleep
 from threading import *
 from tkinter import *
+import tkinter.ttk as ttk
 
 import MetaTrader5 as mt5
 
@@ -16,17 +17,26 @@ class Log:
     is_enabled_to_write_a_log_file = IS_ENABLED_TO_WRITE_A_LOG_FILE
     fd = None
 
+class Symbols:
+    total = 0
+    symbols = []
+    infos = {}
+    selection = ''
+
 class Ctrl:
     def __init__(self):
         self.is_terminating = False
         self.symbol = None
 
-class Tick:
+class Tick:  # This is set every time recv_tick() receives a tick.
     symbol = ''
     bid = 0.0
     ask = 0.0
     spread = 0.0
     spread_max = 0.0
+
+class Symbol:  # A class for a process to send a tick.
+    symbol = ''
 
 def main():
     open_log()
@@ -37,21 +47,23 @@ def main():
 
     # root
 
-    frame_time = Frame(root)
+    frame_symbol = Frame(root)
     frame_order = Frame(root)
     frame_close = Frame(root)
     frame_status = Frame(root)
     
-    frame_time.pack(side = TOP, expand = True, fill = BOTH)
+    frame_symbol.pack(side = TOP, expand = True, fill = BOTH)
     frame_order.pack(side = TOP, expand = True, fill = BOTH)
     frame_close.pack(side = TOP, expand = True, fill = BOTH)
     frame_status.pack(side = TOP, expand = True, fill = BOTH)
 
-    # root -> frame_time
+    # root -> frame_symbol
 
-    label_time = Label(frame_time)
+    combobox_symbol = ttk.Combobox(frame_symbol, state = 'readonly')
+    label_time = Label(frame_symbol)
 
-    label_time.pack(side = TOP, expand = True, fill = BOTH)
+    combobox_symbol.pack(side = LEFT, expand = True, fill = BOTH)
+    label_time.pack(side = LEFT, expand = True, fill = BOTH)
 
     # root -> frame_order
 
@@ -90,28 +102,43 @@ def main():
     write_log('Writing MetaTrader5.account_info()...')
     write_log(mt5.account_info())
 
+    Symbols.total = mt5.symbols_total()
+    for symbol in mt5.symbols_get():
+        Symbols.symbols.append(symbol.name)
+        Symbols.infos[symbol.name] = symbol
+    print('total:', Symbols.total)
+    print('symbols:', Symbols.symbols)
+    print('infos:', Symbols.infos)
+
+    combobox_symbol.configure(values = Symbols.symbols)
+    combobox_symbol.current(0)  # The initial value of the Combobox.
+    Symbols.selection = combobox_symbol.get()
+    combobox_symbol.bind('<<ComboboxSelected>>', partial(symbol_changed, combobox_symbol))
+
     # Dont use bidirectional pipes (Pipe(True)) because they seem unstable.
     write_log('Opening pipes...')
     pipe_tick_rx, pipe_tick_tx = Pipe(False)  # Interprocess Communication for ticks.
     pipe_ctrl_rx, pipe_ctrl_tx = Pipe(False)  # Interprocess Communication for controling a process.
 
+    # A thread to receive a tick.
     write_log('Starting a thread...')
     thread = Thread(target = recv_tick, args = (pipe_tick_rx, label_time, button_bid, button_ask, label_spread))
     thread.start()
 
+    # A process to send a tick.
     write_log('Starting a process...')
     process = Process(target = send_tick_ctrl, args = (pipe_ctrl_rx, pipe_tick_tx))
     process.start()
 
     ctrl = Ctrl()
-    ctrl.symbol = 'EURUSD'
+    ctrl.symbol = Symbols.symbols[0]
     pipe_ctrl_tx.send(ctrl)
-    Tick.symbol = 'EURUSD'
+    Tick.symbol = Symbols.symbols[0]
 
     write_log('Starting the mainloop...')
     root.mainloop()
 
-    # The main window is closed.
+    # The main window is closed. Termination.
 
     write_log('Terminating the child process...')
     ctrl.is_terminating = True
@@ -134,6 +161,10 @@ def main():
 
     print('The program ends.')
 
+def symbol_changed(combobox, event):
+    Symbols.selection = combobox.get()
+    print(Symbols.selection)
+
 def order(type):
     if type == 'ASK':
         print('ask!')
@@ -151,7 +182,7 @@ def spinbox_spread_value_changed(*args):
         Tick.spread_max = 0.0
         return
 
-    if spread_max < 0.0:
+    if spread_max < 0.0:  # (0.0 == -0.0): True, (0.0 is -0.0): False
         Tick.spread_max = 0.0
     elif 1000000.0 < spread_max:
         Tick.spread_max = 1000000.0
@@ -164,7 +195,7 @@ def open_log():
 
 def write_log(msg):
     if Log.is_enabled_to_write_a_log_file:
-        Log.fd.write(msg)
+        Log.fd.write(f'{msg}\n')
     else:
         print(msg)
 
@@ -181,7 +212,6 @@ def send_error(pipe, msg):
 def send_info(pipe, msg):
     try:
         pipe.send({'info': msg})
-        print('fuga')
     except:
         pass
 
@@ -204,7 +234,7 @@ def recv_tick(pipe, label_time, button_bid, button_ask, label_spread):  # Runs i
             time = tick['time']
         except Exception as e:
             if e.args != ():
-                write_log(e.args)
+                write_log(f'Error, getting a time: {e.args}')
             sys.exit()
 
         # This doesnt mean it is UTC but a servers local time.
@@ -273,7 +303,7 @@ def send_tick_ctrl(pipe_ctrl, pipe):  # Runs in a child process.
     ctrl = None
 
     try:
-        ctrl = pipe_ctrl.recv()
+        ctrl = pipe_ctrl.recv()  # Blocking until this gets a first control signal.
     except:
         sys.exit()
 
@@ -319,6 +349,7 @@ def send_tick(pipe, mt5, ctrl):  # Runs in a thread of a child process.
         last_tick = tick
         sleep(0.001)
 
+# To process concurrently,
 # UNIX like OSes dont need to check if the module is __main__ but for Windows, it is essential.
 # Since Windows doesnt have the fork system call,
 # child processes run their program from the first line like their parent process does.

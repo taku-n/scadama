@@ -7,19 +7,20 @@ def main():
 
     # root
 
-    frame_time = Frame(root)
+    frame_symbol = Frame(root)
     frame_order = Frame(root)
     frame_close = Frame(root)
     frame_status = Frame(root)
 
-    frame_time.pack(side = TOP, expand = True, fill = BOTH)
+    frame_symbol.pack(side = TOP, expand = True, fill = BOTH)
     frame_order.pack(side = TOP, expand = True, fill = BOTH)
     frame_close.pack(side = TOP, expand = True, fill = BOTH)
     frame_status.pack(side = TOP, expand = True, fill = BOTH)
 
-    # root -> frame_time
+    # root -> frame_symbol
 
-    create_label(frame_time, 'label_time', LEFT)
+    create_label(frame_symbol, 'combobox_symbol', LEFT)
+    create_label(frame_symbol, 'label_time', LEFT)
 
     # root -> frame_order
 
