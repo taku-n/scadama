@@ -18,6 +18,9 @@ class Log:
     is_enabled_to_write_a_log_file = IS_ENABLED_TO_WRITE_A_LOG_FILE
     fd = None
 
+class Widgets:
+    widgets = {}
+
 class Symbols:
     total = 0
     symbols = []
@@ -28,12 +31,13 @@ class Ctrl:
         self.is_terminating = False
         self.symbol = symbol
 
-class Tick:  # This class except spread_max is set every time recv_tick() receives a tick.
+class Tick:  # symbol, ask, bid and spread are set every time recv_tick() receives a tick.
     symbol = ''
     ask = 0.0
     bid = 0.0
     spread = 0.0
     spread_max = 0.0
+    lots = 0.0
 
 class Symbol:  # A class for a process to send a tick.
     symbol = ''
@@ -50,11 +54,13 @@ def main():
     frame_symbol = Frame(root)
     frame_order = Frame(root)
     frame_close = Frame(root)
+    frame_lots = Frame(root)
     frame_status = Frame(root)
     
     frame_symbol.pack(side = TOP, expand = True, fill = BOTH)
     frame_order.pack(side = TOP, expand = True, fill = BOTH)
     frame_close.pack(side = TOP, expand = True, fill = BOTH)
+    frame_lots.pack(side = TOP, expand = True, fill = BOTH)
     frame_status.pack(side = TOP, expand = True, fill = BOTH)
 
     # root -> frame_symbol
@@ -79,6 +85,21 @@ def main():
     button_ask.pack(side = RIGHT, expand = True, fill = BOTH)
     spinbox_spread.pack(side = TOP, expand = True, fill = BOTH)
     label_spread.pack(side = BOTTOM, expand = True, fill = BOTH)
+
+    Widgets.widgets['spinbox_spread'] = spinbox_spread
+
+    # root -> frame_lots
+
+    label_lots = Label(frame_lots, text = 'Lots:')
+    spinbox_lots_value = DoubleVar(value = 0.0)
+    spinbox_lots_value.trace('w', spinbox_lots_value_changed)
+    spinbox_lots = Spinbox(frame_lots, textvariable = spinbox_lots_value,
+            from_ = 0.0, increment = 0.01, to = 1000000.0, format = '%.2f')
+
+    label_lots.pack(side = LEFT, expand = True, fill = BOTH)
+    spinbox_lots.pack(side = LEFT, expand = True, fill = BOTH)
+
+    Widgets.widgets['spinbox_lots'] = spinbox_lots
 
     # root -> frame_status
 
@@ -177,7 +198,7 @@ def order(type):
 def spinbox_spread_value_changed(*args):
     try:
         spread_max = args[0].get()
-    except Exception as e:
+    except Exception as e:  # Including its value is not a floating point number.
         if e.args != ():
             write_log(e.args)
         Tick.spread_max = 0.0
@@ -189,6 +210,30 @@ def spinbox_spread_value_changed(*args):
         Tick.spread_max = 1000000.0
     else:
         Tick.spread_max = spread_max
+
+def spinbox_lots_value_changed(*args):
+    try:
+        lots = Widgets.widgets['spinbox_lots'].get()
+    except Exception as e:
+        if e.args != ():
+            write_log(e.args)
+        Tick.lots = 0.0
+        return
+
+    try:
+        lots = float(lots)
+    except Exception as e:
+        if e.args != ():
+            write_log(e.args)
+        Tick.lots = 0.0
+        return
+
+    if lots < 0.0:  # (0.0 == -0.0): True, (0.0 is -0.0): False
+        Tick.lots = 0.0
+    elif 1000000.0 < lots:
+        Tick.lots = 1000000.0
+    else:
+        Tick.lots = lots
 
 def open_log():
     if Log.is_enabled_to_write_a_log_file:

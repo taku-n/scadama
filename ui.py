@@ -10,11 +10,13 @@ def main():
     frame_symbol = Frame(root)
     frame_order = Frame(root)
     frame_close = Frame(root)
+    frame_lots = Frame(root)
     frame_status = Frame(root)
 
     frame_symbol.pack(side = TOP, expand = True, fill = BOTH)
     frame_order.pack(side = TOP, expand = True, fill = BOTH)
     frame_close.pack(side = TOP, expand = True, fill = BOTH)
+    frame_lots.pack(side = TOP, expand = True, fill = BOTH)
     frame_status.pack(side = TOP, expand = True, fill = BOTH)
 
     # root -> frame_symbol
@@ -34,6 +36,11 @@ def main():
     create_label(frame_close, 'button_close_bid', LEFT)
     create_label(frame_close, 'button_close', LEFT)
     create_label(frame_close, 'button_close_ask', LEFT)
+
+    # root -> frame_lots
+
+    create_label(frame_lots, 'label_lots', LEFT)
+    create_label(frame_lots, 'spinbox_lots', LEFT)
 
     # root -> frame_status
 
