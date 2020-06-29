@@ -193,7 +193,7 @@ def order(type):
     elif type == 'BID':
         print('bid!')
     else:
-        print('invalid!')
+        write_log('Invalid order type.')
 
 def spinbox_spread_value_changed(*args):
     try:
