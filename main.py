@@ -39,9 +39,6 @@ class Tick:  # symbol, ask, bid and spread are set every time recv_tick() receiv
     spread_max = 0.0
     lots = 0.0
 
-class Symbol:  # A class for a process to send a tick.
-    symbol = ''
-
 def main():
     open_log()
 
@@ -106,6 +103,8 @@ def main():
     label_status = Label(frame_status)
 
     label_status.pack(expand = True, fill = BOTH)
+
+    Widgets.widgets['label_status'] = label_status
 
     # Connect to a MetaTrader 5.
 
@@ -189,9 +188,35 @@ def symbol_changed(combobox, pipe_ctrl, event):
 
 def order(type):
     if type == 'ASK':
-        print('ask!')
+        request = {
+            'action': mt5.TRADE_ACTION_DEAL,
+            'symbol': Tick.symbol,
+            'volume': Tick.lots,
+            'type': mt5.ORDER_TYPE_BUY,
+            'price': Tick.ask,
+            'deviation': 0,
+            'type_filling': mt5.ORDER_FILLING_RETURN,
+        }
+        result = mt5.order_send(request)
+        result_dict = result._asdict()
+        write_log(f'{result_dict}')
+
+        Widgets.widgets['label_status']['text'] = result_dict['comment']
     elif type == 'BID':
-        print('bid!')
+        request = {
+            'action': mt5.TRADE_ACTION_DEAL,
+            'symbol': Tick.symbol,
+            'volume': Tick.lots,
+            'type': mt5.ORDER_TYPE_SELL,
+            'price': Tick.bid,
+            'deviation': 0,
+            'type_filling': mt5.ORDER_FILLING_RETURN,
+        }
+        result = mt5.order_send(request)
+        result_dict = result._asdict()
+        write_log(f'{result_dict}')
+
+        Widgets.widgets['label_status']['text'] = result_dict['comment']
     else:
         write_log('Invalid order type.')
 
