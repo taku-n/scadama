@@ -46,6 +46,19 @@
 (assert (typep '"hoge"  hy.models.HyString))
 (assert (typep '(2 3 5) hy.models.HyExpression))
 
+; defparameter
+
+(defun set-global-variable ()
+  (defparameter *x* 41))
+(set-global-variable)
+
+(defun update-global-variable ()
+  (defparameter *x* 42))
+(update-global-variable)
+
+(assert (equal *x* 42)
+        "defparameter")
+
 ; equal
 
 (assert (and (equal 'hoge 'hoge)

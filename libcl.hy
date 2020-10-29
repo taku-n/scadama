@@ -13,12 +13,18 @@
         vals (map second pairs))  ; 変数 vars と vals は，マクロ展開後残らないので問題ないはず...
   `((fn [~@vars] ~@body) ~@vals))
 
-(defmacro setf [&rest args]
+; If the values must not invoke twice, use setv.
+; e.g. (setf root (Tk)) makes an unexpected result being two windows.
+(defmacro setf [&rest args]  ; (setf x 2 y (+ 2 3) z (* 2 3)) -> args: (x 2 y (+ 2 3) z (* 2 3))
   `(do (setv ~@args)
-       (last ~args)))
+       (last ~args)))    ; (do (setv x 2 y (+ 2 3) z (* 2 3)) (last [x 2 y (+ 2 3) z (* 2 3)]))
 
 (defmacro typep (obj objtype)  ; objtype は，hy.models.* なので，defmacro を使った
   `(is (type ~obj) ~objtype))
+
+(defmacro defparameter (var val)
+  `(do (global ~var)
+       (setv ~var ~val)))
 
 (setf nil '())
 
