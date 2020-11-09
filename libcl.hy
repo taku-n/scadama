@@ -31,7 +31,7 @@
 (defun equal (x y)
   (= x y))
 
-; ドット対には非対応
+; ドットリストには非対応
 (defun cons (x xs)
   (+ `(~x) xs))
 
