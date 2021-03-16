@@ -1,0 +1,6 @@
+# Paths to your MetaTrader 5 clients.
+client = [
+  'C:\local\mt5\mq\terminal64.exe',
+  'C:\local\mt5\tt\terminal64.exe',
+  'C:\your\mt5\terminal64.exe',
+]
