@@ -4,7 +4,6 @@
 # PyInstaller
 build
 dist
-main.spec
 
 *.ex5
 
