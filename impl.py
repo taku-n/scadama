@@ -59,6 +59,8 @@ def connect(instance):
             instance.combobox_symbol.SetSelection(0)
             instance.symbol = instance.combobox_symbol.GetStringSelection()
 
+        instance.symbol_info = mt5.symbol_info(instance.symbol)
+
         instance.q_ctrl = Queue()  # Interprocess Communication for controlling a process.
         q_tick = Queue()  # Interprocess Communication for ticks.
 
@@ -90,9 +92,11 @@ def disconnect(instance):
 def recv_tick(instance, q_tick):  # Runs in a thread.
     while True:
         # Get a tick.
-
-        tick = q_tick.get()
+        tick = q_tick.get()  # e.g. {'time': 1616153185, 'bid': 1.19124, 'ask': 1.19127,
+                             # 'last': 0.0, 'volume': 0, 'time_msc': 1616153185151, 'flags': 4,
+                             # 'volume_real': 0.0, 'symbol': 'EURUSD'}
         print(tick)
+        print(instance.symbol_info.currency_profit)
         continue
 
         # Show the servers local time.
@@ -184,11 +188,7 @@ def send_tick(q_ctrl, q_tick):  # Runs in a child process.
             tick = mt5.symbol_info_tick(symbol)._asdict()  # Non-blocking
 
             if tick != last_tick:
-                q_tick.put('----')
-                q_tick.put(tick)
-                q_tick.put(last_tick)
-                q_tick.put(tick == last_tick)
-                last_tick = tick
+                last_tick = tick.copy()
                 tick['symbol'] = symbol
                 q_tick.put(tick)
 
