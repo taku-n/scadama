@@ -1,10 +1,15 @@
 import math
 
 import wx
+import wx.lib.newevent
+
+# To propagate this event, I use NewCommandEvent() instead of NewEvent().
+Order, EVT_ORDER = wx.lib.newevent.NewCommandEvent()
 
 class OrderButton(wx.Panel):
     def __init__(self, parent, id):
         super().__init__(parent, style=wx.BORDER_NONE)
+        self.parent = parent
 
         self.font1 = wx.Font(15, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
             wx.FONTWEIGHT_NORMAL, False, 'Courier 10 Pitch')
@@ -12,37 +17,29 @@ class OrderButton(wx.Panel):
             wx.FONTWEIGHT_NORMAL, False, 'Courier 10 Pitch')
         self.font3 = wx.Font(15, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
             wx.FONTWEIGHT_NORMAL, False, 'Courier 10 Pitch')
+        self.SetForegroundColour('WHITE')
 
         self.price = 0.00000
-        self.update_price(0.00000, 'USD')
+        self.update_price(0.00000, 5)
 
         self.Bind(wx.EVT_PAINT, self.on_paint)
         self.Bind(wx.EVT_SIZE, self.on_size)
         self.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
         self.Bind(wx.EVT_LEFT_DCLICK, self.on_left_dclick)
 
-    def update_price(self, price, currency_profit):  # e.g. EURUSD, USD is the currency_profit.
-        if currency_profit == 'USD':
-            price_str = format(price, '.5f')
-            self.price1 = price_str[:-3]
-            self.price2 = price_str[-3:-1]
-            self.price3 = price_str[-1:]
-        elif currency_profit == 'JPY':
-            price_str = format(price, '.3f')
-            self.price1 = price_str[:-3]
-            self.price2 = price_str[-3:-1]
-            self.price3 = price_str[-1:]
-        else:
-            self.price1 = ''
-            self.price2 = 'NA'
-            self.price3 = ''
+    def update_price(self, price, digit):
+        price_str = f'{price:.{digit}f}'
+        self.price1 = price_str[:-3]
+        self.price2 = price_str[-3:-1]
+        self.price3 = price_str[-1:]
 
         if self.price < price:
             self.SetBackgroundColour('RED')
         elif self.price > price:
             self.SetBackgroundColour('BLUE')
         else:
-            self.SetBackgroundColour(wx.NullColour)
+            #self.SetBackgroundColour(wx.NullColour)
+            pass
 
         self.price = price
 
@@ -53,7 +50,7 @@ class OrderButton(wx.Panel):
         width, height = self.GetSize()
 
         dc.SetFont(self.font1)
-        text_width, text_height = dc.GetTextExtent(self.price1)
+        text_width, text_height = dc.GetTextExtent(self.price1)  # The size which a text takes.
         dc.DrawText(self.price1,
                 math.floor(width / 6 - text_width / 2), math.floor(height - text_height))
 
@@ -71,7 +68,9 @@ class OrderButton(wx.Panel):
         self.Refresh()
 
     def on_left_down(self, event):
-        pass
+        e = Order(event.GetId(), price = self.price)  # EVT_ORDER is generated.
+        wx.PostEvent(self.parent, e)
 
     def on_left_dclick(self, event):
-        self.on_left_down(event)
+        e = Order(event.GetId(), price = self.price)  # EVT_ORDER is generated.
+        wx.PostEvent(self.parent, e)

@@ -1,3 +1,5 @@
+import datetime
+import locale
 from multiprocessing import *
 import os
 from threading import *
@@ -21,19 +23,52 @@ class FrameMainImpl(ui.FrameMain):
         # Load configuration.
         config = toml.load(open('config.toml'))
 
+        # Setup queues.
+        self.q_ctrl = Queue()  # Interprocess Communication for controlling a process.
+        self.q_tick = Queue()  # Interprocess Communication for ticks.
+
         # choice_client
         client = config['client']
         self.choice_client.Set(client)
         self.choice_client.SetSelection(0)
 
-        symbols = config['symbol']
-        self.symbol = symbols[0]
+        quick_symbols = config['symbol']
+        self.symbol = quick_symbols[0]
+        self.symbols = []
 
     def on_connection(self, event):
         if self.togglebutton_connect.GetValue():  # Pressed
             connect(self)
         else:  # Pulled
             disconnect(self)
+
+    def on_symbol_selection(self, event):
+        self.symbol = self.combobox_symbol.GetStringSelection()
+        self.symbol_info = mt5.symbol_info(self.symbol)
+        if not self.symbol_info.select:
+            mt5.symbol_select(self.symbol, True)
+        self.q_ctrl.put(self.symbol)
+
+    def on_symbol_input(self, event):
+        symbol = self.combobox_symbol.GetValue()
+        if symbol in self.symbols:
+            self.symbol = symbol
+            self.symbol_info = mt5.symbol_info(self.symbol)
+            if not self.symbol_info.select:
+                mt5.symbol_select(self.symbol, True)
+            self.combobox_symbol.SetStringSelection(self.symbol)
+            self.q_ctrl.put(self.symbol)
+
+    def on_bid_order(self, event):
+        print('Bid:', event.price)
+
+    def on_ask_order(self, event):
+        print('Ask:', event.price)
+
+    def on_close(self, event):
+        self.q_ctrl.put('disconnect')  # Child Process Disconnection
+        mt5.shutdown()
+        self.Destroy()
 
 def connect(instance):
     client = instance.choice_client.GetStringSelection()
@@ -48,13 +83,15 @@ def connect(instance):
 
         # combobox_symbol
 
-        symbol_info = mt5.symbols_get()
-        symbol = []
-        for x in symbol_info:
-            symbol.append(x.name)
-        instance.combobox_symbol.Set(symbol)
+        symbols_info = mt5.symbols_get()
+        symbols = []
+        for x in symbols_info:
+            symbols.append(x.name)
+        instance.symbols = symbols
 
-        if instance.symbol in symbol:
+        instance.combobox_symbol.Set(instance.symbols)
+
+        if instance.symbol in instance.symbols:
             instance.combobox_symbol.SetStringSelection(instance.symbol)
         else:
             instance.combobox_symbol.SetSelection(0)
@@ -62,15 +99,12 @@ def connect(instance):
 
         instance.symbol_info = mt5.symbol_info(instance.symbol)
 
-        instance.q_ctrl = Queue()  # Interprocess Communication for controlling a process.
-        q_tick = Queue()  # Interprocess Communication for ticks.
-
         # A thread to receive a tick.
-        thread = Thread(target = recv_tick, args = (instance, q_tick))
+        thread = Thread(target = recv_tick, args = (instance, ))
         thread.start()
 
         # A process to send a tick.
-        process = Process(target = send_tick, args = (instance.q_ctrl, q_tick))
+        process = Process(target = send_tick, args = (instance.q_ctrl, instance.q_tick))
         process.start()
         instance.q_ctrl.put(instance.choice_client.GetStringSelection())
         instance.q_ctrl.put(instance.symbol)
@@ -78,6 +112,7 @@ def connect(instance):
     else:  # Failure
         instance.togglebutton_connect.SetValue(False)
         print('Failed to connect to', client)
+        print(last_error())
 
 def disconnect(instance):
     client = instance.choice_client.GetStringSelection()
@@ -90,64 +125,40 @@ def disconnect(instance):
     instance.combobox_symbol.Clear()
     instance.togglebutton_connect.SetLabel('Connect')
 
-def recv_tick(instance, q_tick):  # Runs in a thread.
+def recv_tick(it):  # Runs in a thread.
+    locale.setlocale(locale.LC_TIME, 'en_US.UTF-8')
+
     while True:
         # Get a tick.
-        tick = q_tick.get()  # e.g. {'time': 1616153185, 'bid': 1.19124, 'ask': 1.19127,
-                             # 'last': 0.0, 'volume': 0, 'time_msc': 1616153185151, 'flags': 4,
-                             # 'volume_real': 0.0, 'symbol': 'EURUSD'}
-        print(tick)
-        print(instance.symbol_info.currency_profit)
-        continue
+        tick = it.q_tick.get()  # e.g. {'time': 1616153185, 'bid': 1.19124, 'ask': 1.19127,
+                                # 'last': 0.0, 'volume': 0, 'time_msc': 1616153185151, 'flags': 4,
+                                # 'volume_real': 0.0, 'symbol': 'EURUSD', 'error': ''}
 
-        # Show the servers local time.
+        # Show the server's local time.
 
-        try:
-            time = tick['time']
-        except Exception as e:
-            if e.args != ():
-                pass
-                #write_log(f'Error, getting a time: {e.args}')
-            sys.exit()
+        time = tick['time']
 
-        # This doesnt mean it is UTC but a servers local time.
+        # This does not mean it is UTC but server's local time.
         time_zone = datetime.timezone(datetime.timedelta(hours = 0))
-
         time = datetime.datetime.fromtimestamp(time, time_zone)
-        time = f'{time:%Y.%m.%d %a %H:%M:%S}'  # f-string
+        time_str = f'{time:%Y.%m.%d %a %H:%M:%S}'  # f-string
 
-        try:
-            label_time.configure(text = time)
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            sys.exit()
+        it.statictext_time.SetLabel(time_str)
 
-        # Set a symbol.
-        Tick.symbol = tick['symbol']
+        # Show bid, ask and spread.
 
-        # Show ask, bid and spread.
+        it.bid = tick['bid']
+        it.orderbutton_bid.update_price(it.bid, it.symbol_info.digits)
 
-        try:
-            ask = tick['ask']
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            sys.exit()
+        it.ask = tick['ask']
+        it.orderbutton_ask.update_price(it.ask, it.symbol_info.digits)
 
-        Tick.ask = ask
+        it.spread = round((it.ask - it.bid) * (10.0 ** (it.symbol_info.digits - 1.0)), 1)
+        it.statictext_spread.SetLabel(f'{it.spread:.1f}')
 
-        try:
-            bid = tick['bid']
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            sys.exit()
-
-        Tick.bid = bid
-
-        spread = (ask - bid) * 10000.0
-        Tick.spread = spread
+        if tick['error'] != '':
+            it.SetStatusText(f'Error: {tick["error"]}')
+        continue
 
         try:
             button_ask.configure(text = f'{ask:.5f}')
@@ -186,11 +197,25 @@ def send_tick(q_ctrl, q_tick):  # Runs in a child process.
                 else:
                     symbol = ctrl
 
-            tick = mt5.symbol_info_tick(symbol)._asdict()  # Non-blocking
+            tick = mt5.symbol_info_tick(symbol)  # Non-blocking
 
-            if tick != last_tick:
-                last_tick = tick.copy()
-                tick['symbol'] = symbol
-                q_tick.put(tick)
+            if tick != None:
+                if tick != last_tick:
+                    last_tick = tick
+                    tick_d = tick._asdict()
+                    tick_d['symbol'] = symbol
+                    tick_d['error'] = ''
+                    q_tick.put(tick_d)
+            else:
+                # Double parens by structseq()
+                #                time  bid  ask  last  volume  time_msc  flags  volume_real
+                tick = mt5.Tick((   0, 0.0, 0.0,  0.0,      0,        0,     0,         0.0))
+
+                if tick != last_tick:
+                    last_tick = tick
+                    tick_d = tick._asdict()
+                    tick_d['symbol'] = symbol
+                    tick_d['error'] = 'Getting a symbol info tick failed.'
+                    q_tick.put(tick_d)
 
             sleep(0.001)
