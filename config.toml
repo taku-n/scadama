@@ -10,3 +10,11 @@ symbol = [
   'EURUSD',
   'USDJPY',
 ]
+
+# Main Window Size
+# If the x value is 0, the window size will be decided automatically.
+# [Windows] If you get the window scale setting 200%,
+#           the window size will be twice as large as this settings.
+[size]
+x = 0
+y = 0

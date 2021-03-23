@@ -27,11 +27,17 @@ class FrameMainImpl(ui.FrameMain):
         self.q_ctrl = Queue()  # Interprocess Communication for controlling a process.
         self.q_tick = Queue()  # Interprocess Communication for ticks.
 
+        # Main Window Size
+        size = config['size']
+        if size['x'] != 0:
+            self.SetSize(wx.Size(size['x'], size['y']))
+
         # choice_client
         client = config['client']
         self.choice_client.Set(client)
         self.choice_client.SetSelection(0)
 
+        # Initialize a symbol.
         quick_symbols = config['symbol']
         self.symbol = quick_symbols[0]
         self.symbols = []
@@ -43,41 +49,36 @@ class FrameMainImpl(ui.FrameMain):
             disconnect(self)
 
     def on_symbol_selection(self, event):
-        self.symbol = self.combobox_symbol.GetStringSelection()
-        self.symbol_info = mt5.symbol_info(self.symbol)
-        if not self.symbol_info.select:
-            mt5.symbol_select(self.symbol, True)
-        self.q_ctrl.put(self.symbol)
+        symbol = self.combobox_symbol.GetStringSelection()
+        change_symbol(self, symbol)
 
     def on_symbol_input(self, event):
         symbol = self.combobox_symbol.GetValue()
         if symbol in self.symbols:
-            self.symbol = symbol
-            self.symbol_info = mt5.symbol_info(self.symbol)
-            if not self.symbol_info.select:
-                mt5.symbol_select(self.symbol, True)
+            change_symbol(self, symbol)
             self.combobox_symbol.SetStringSelection(self.symbol)
-            self.q_ctrl.put(self.symbol)
 
     def on_bid_order(self, event):
         print('Bid:', event.price)
+        print(round(self.spinctrldouble_spread.GetValue(), 1))
 
     def on_ask_order(self, event):
         print('Ask:', event.price)
+        print(round(self.spinctrldouble_spread.GetValue(), 1))
 
     def on_close(self, event):
         self.q_ctrl.put('disconnect')  # Child Process Disconnection
         mt5.shutdown()
         self.Destroy()
 
-def connect(instance):
-    client = instance.choice_client.GetStringSelection()
+def connect(it):
+    client = it.choice_client.GetStringSelection()
 
     if mt5.initialize(client):  # Success
-        instance.choice_client.Disable()
-        instance.togglebutton_connect.SetLabel('Disconnect')
+        it.choice_client.Disable()
+        it.togglebutton_connect.SetLabel('Disconnect')
         print('Connected to', client)
-        instance.SetStatusText('Connected to ' + client)
+        it.SetStatusText('Connected to ' + client)
         print('Terminal Info:', mt5.terminal_info())
         print('MetaTrader 5 version:', mt5.version())
 
@@ -87,43 +88,46 @@ def connect(instance):
         symbols = []
         for x in symbols_info:
             symbols.append(x.name)
-        instance.symbols = symbols
+        it.symbols = symbols
 
-        instance.combobox_symbol.Set(instance.symbols)
+        it.combobox_symbol.Set(it.symbols)
 
-        if instance.symbol in instance.symbols:
-            instance.combobox_symbol.SetStringSelection(instance.symbol)
+        if it.symbol in it.symbols:
+            it.combobox_symbol.SetStringSelection(it.symbol)
         else:
-            instance.combobox_symbol.SetSelection(0)
-            instance.symbol = instance.combobox_symbol.GetStringSelection()
+            it.combobox_symbol.SetSelection(0)
+            it.symbol = it.combobox_symbol.GetStringSelection()
 
-        instance.symbol_info = mt5.symbol_info(instance.symbol)
+        it.symbol_info = mt5.symbol_info(it.symbol)
+        if not it.symbol_info.select:
+            mt5.symbol_select(it.symbol, True)
+        it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
 
         # A thread to receive a tick.
-        thread = Thread(target = recv_tick, args = (instance, ))
+        thread = Thread(target = recv_tick, args = (it, ))
         thread.start()
 
         # A process to send a tick.
-        process = Process(target = send_tick, args = (instance.q_ctrl, instance.q_tick))
+        process = Process(target = send_tick, args = (it.q_ctrl, it.q_tick))
         process.start()
-        instance.q_ctrl.put(instance.choice_client.GetStringSelection())
-        instance.q_ctrl.put(instance.symbol)
+        it.q_ctrl.put(it.choice_client.GetStringSelection())
+        it.q_ctrl.put(it.symbol)
 
     else:  # Failure
-        instance.togglebutton_connect.SetValue(False)
+        it.togglebutton_connect.SetValue(False)
         print('Failed to connect to', client)
         print(last_error())
 
-def disconnect(instance):
-    client = instance.choice_client.GetStringSelection()
+def disconnect(it):
+    client = it.choice_client.GetStringSelection()
 
-    instance.q_ctrl.put('disconnect')  # Child Process Disconnection
+    it.q_ctrl.put('disconnect')  # Child Process Disconnection
     mt5.shutdown()
     print('Disconnected from', client)
-    instance.SetStatusText('Disconnected from ' + client)
-    instance.choice_client.Enable()
-    instance.combobox_symbol.Clear()
-    instance.togglebutton_connect.SetLabel('Connect')
+    it.SetStatusText('Disconnected from ' + client)
+    it.choice_client.Enable()
+    it.combobox_symbol.Clear()
+    it.togglebutton_connect.SetLabel('Connect')
 
 def recv_tick(it):  # Runs in a thread.
     locale.setlocale(locale.LC_TIME, 'en_US.UTF-8')
@@ -153,8 +157,8 @@ def recv_tick(it):  # Runs in a thread.
         it.ask = tick['ask']
         it.orderbutton_ask.update_price(it.ask, it.symbol_info.digits)
 
-        it.spread = round((it.ask - it.bid) * (10.0 ** (it.symbol_info.digits - 1.0)), 1)
-        it.statictext_spread.SetLabel(f'{it.spread:.1f}')
+        it.spread = round((it.ask - it.bid) * (10.0 ** it.symbol_info.digits))
+        it.statictext_spread.SetLabel(f'{it.spread}')
 
         if tick['error'] != '':
             it.SetStatusText(f'Error: {tick["error"]}')
@@ -219,3 +223,15 @@ def send_tick(q_ctrl, q_tick):  # Runs in a child process.
                     q_tick.put(tick_d)
 
             sleep(0.001)
+
+def change_symbol(it, symbol):
+    it.symbol = symbol
+    it.symbol_info = mt5.symbol_info(it.symbol)
+    if not it.symbol_info.select:
+        mt5.symbol_select(it.symbol, True)
+    it.spinctrldouble_lot.SetValue(0.0)
+    it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
+    it.q_ctrl.put(it.symbol)
+
+def send_order(it):
+    print(round(it.spinctrldouble_spread.GetValue(), 1))
