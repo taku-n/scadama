@@ -21,7 +21,7 @@ class FrameMainImpl(ui.FrameMain):
         self.SetStatusText('MetaTrader5 package version: ' + mt5.__version__)
 
         # Load configuration.
-        config = toml.load(open('config.toml'))
+        config = toml.load('config.toml')
 
         # Setup queues.
         self.q_ctrl = Queue()  # Interprocess Communication for controlling a process.
@@ -59,12 +59,43 @@ class FrameMainImpl(ui.FrameMain):
             self.combobox_symbol.SetStringSelection(self.symbol)
 
     def on_bid_order(self, event):
-        print('Bid:', event.price)
-        print(round(self.spinctrldouble_spread.GetValue(), 1))
+        lot = self.spinctrldouble_lot.GetValue()
+        slip = self.spinctrl_slippage.GetValue()
+        sl = self.spinctrl_sl.GetValue()
+        tp = self.spinctrl_tp.GetValue()
+
+        code, msg = send_order('sell', self.symbol, event.price, lot, slip, sl, tp)
+
+        if code == 'done':
+            print('Done:', msg)
+        else:
+            print('Error:', msg)
 
     def on_ask_order(self, event):
-        print('Ask:', event.price)
-        print(round(self.spinctrldouble_spread.GetValue(), 1))
+        lot = self.spinctrldouble_lot.GetValue()
+        slip = self.spinctrl_slippage.GetValue()
+        sl = self.spinctrl_sl.GetValue()
+        tp = self.spinctrl_tp.GetValue()
+
+        code, msg = send_order('buy', self.symbol, event.price, lot, slip, sl, tp)
+
+        if code == 'done':
+            print('Done:', msg)
+        else:
+            print('Error:', msg)
+
+    def on_setting_spin(self, event):
+        symbol = self.symbol
+        sp_lim = self.spinctrl_spread.GetValue()
+        lot = self.spinctrldouble_lot.GetValue()
+        slip = self.spinctrl_slippage.GetValue()
+        sl = self.spinctrl_sl.GetValue()
+        tp = self.spinctrl_tp.GetValue()
+
+        spin_toml = toml.load('spin.toml')
+        spin_toml['spin'][symbol] = {'sp_lim': sp_lim, 'lot': lot, 'slip': slip, 'sl': sl, 'tp': tp}
+        with open('spin.toml', 'w') as f:
+            toml.dump(spin_toml, f)
 
     def on_close(self, event):
         self.q_ctrl.put('disconnect')  # Child Process Disconnection
@@ -102,6 +133,7 @@ def connect(it):
         if not it.symbol_info.select:
             mt5.symbol_select(it.symbol, True)
         it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
+        set_spin(it, it.symbol)
 
         # A thread to receive a tick.
         thread = Thread(target = recv_tick, args = (it, ))
@@ -229,9 +261,82 @@ def change_symbol(it, symbol):
     it.symbol_info = mt5.symbol_info(it.symbol)
     if not it.symbol_info.select:
         mt5.symbol_select(it.symbol, True)
-    it.spinctrldouble_lot.SetValue(0.0)
     it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
+    set_spin(it, symbol)
     it.q_ctrl.put(it.symbol)
 
-def send_order(it):
-    print(round(it.spinctrldouble_spread.GetValue(), 1))
+def set_spin(it, symbol):
+    spin_toml = toml.load('spin.toml')
+    if symbol in spin_toml['spin']:
+        spin_data = spin_toml['spin'][symbol]
+        it.spinctrl_spread.SetValue(spin_data['sp_lim'])
+        it.spinctrldouble_lot.SetValue(spin_data['lot'])
+        it.spinctrl_slippage.SetValue(spin_data['slip'])
+        it.spinctrl_sl.SetValue(spin_data['sl'])
+        it.spinctrl_tp.SetValue(spin_data['tp'])
+    else:
+        it.spinctrl_spread.SetValue(0)
+        it.spinctrldouble_lot.SetValue(0.0)
+        it.spinctrl_slippage.SetValue(0)
+        it.spinctrl_sl.SetValue(0)
+        it.spinctrl_tp.SetValue(0)
+
+def send_order(order, symbol, price, lot, slip, stop, take):
+    symbol_info = mt5.symbol_info(symbol)
+    if not symbol_info:
+        return 'error', 'Getting symbol infomation failed.'
+
+    if not symbol_info.select:
+        return 'error', 'Symbol is not selected.'
+
+    pt = symbol_info.point
+
+    if order == 'buy':
+        type = mt5.ORDER_TYPE_BUY
+
+        if stop != 0:
+            sl = price - stop * pt
+        else:
+            sl = 0.0
+
+        if take != 0:
+            tp = price + take * pt
+        else:
+            tp = 0.0
+    elif order == 'sell':
+        type = mt5.ORDER_TYPE_SELL
+
+        if stop != 0:
+            sl = price + stop * pt
+        else:
+            sl = 0.0
+
+        if take != 0:
+            tp = price - take * pt
+        else:
+            tp = 0.0
+    else:
+        return 'error', 'Invalid order type.'
+
+    req = {'action': mt5.TRADE_ACTION_DEAL,
+            'symbol': symbol,
+            'volume': lot,
+            'type': type,
+            'price': price,
+            'sl': sl,
+            'tp': tp,
+            'deviation': slip,
+            'magic': 0,
+            'comment': '',
+            'type_time': mt5.ORDER_TIME_GTC,
+            'type_filling': mt5.ORDER_FILLING_FOK}
+
+    print(req)
+    res = mt5.order_send(req)
+
+    print(res)
+
+    if res.retcode == mt5.TRADE_RETCODE_DONE:
+        return 'done', res
+    else:
+        return 'error', res

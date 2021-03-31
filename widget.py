@@ -11,7 +11,7 @@ class OrderButton(wx.Panel):
         super().__init__(parent, style=wx.BORDER_NONE)
         self.parent = parent
 
-        self.font1 = wx.Font(13, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
+        self.font1 = wx.Font(15, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
             wx.FONTWEIGHT_NORMAL, False, 'Courier 10 Pitch')
         self.font2 = wx.Font(30, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL,
             wx.FONTWEIGHT_NORMAL, False, 'Courier 10 Pitch')

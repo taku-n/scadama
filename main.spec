@@ -20,6 +20,7 @@ a = Analysis(['main.py'],
 a.datas += [('impl.py', '.\\impl.py', 'DATA')]
 a.datas += [('widget.py', '.\\widget.py', 'DATA')]
 a.datas += [('config.toml', '.\\config.toml', 'DATA')]
+a.datas += [('spin.toml', '.\\spin.toml', 'DATA')]
 
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
