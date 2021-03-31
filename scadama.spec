@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-# To build, run "pyinstaller main.spec --noconfirm"
+# To build, run "pyinstaller scadama.spec --noconfirm"
 
 block_cipher = None
 
@@ -28,7 +28,7 @@ exe = EXE(pyz,
           a.scripts,
           [],
           exclude_binaries=True,
-          name='main',
+          name='scadama',  # A name for the executable file.
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,
@@ -41,4 +41,4 @@ coll = COLLECT(exe,
                strip=False,
                upx=True,
                upx_exclude=[],
-               name='main')
+               name='scadama')  # A name for the directory having the executable file.
