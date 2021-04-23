@@ -4,6 +4,8 @@ import sys
 
 import MetaTrader5 as mt5
 
+from enums import *
+
 def main():
     print('''Type "initialize('PATH-TO-YOUR-CLIENT')" to connect.''')
     print('    When you use "\\t" in your path, use "\\\\t" instead.')
@@ -89,7 +91,14 @@ def account_info():
 
     d = info._asdict()
     for k in d:
-        print(f'{k:>18}: {d[k]}')
+        print(f'{k:>18}: {d[k]}', end='')
+        if k == 'trade_mode':
+            print(f' ({ENUM_ACCOUNT_TRADE_MODE(d[k])})', end='')
+        elif k == 'margin_so_mode':
+            print(f' ({ENUM_ACCOUNT_STOPOUT_MODE(d[k])})', end='')
+        elif k == 'margin_mode':
+            print(f' ({ENUM_ACCOUNT_MARGIN_MODE(d[k])})', end='')
+        print('')
 
 def symbols_total():
     n = mt5.symbols_total()
@@ -120,23 +129,19 @@ def symbol_info(symbol):
     d = s._asdict()
     for k in d:
         if k == 'point':
-            print(f'{k:>26}: {d[k]:f}')
+            print(f'{k:>26}: {d[k]:f}', end='')
         elif k == 'trade_tick_size':
-            print(f'{k:>26}: {d[k]:f}')
+            print(f'{k:>26}: {d[k]:f}', end='')
         else:
-            print(f'{k:>26}: {d[k]}')
+            print(f'{k:>26}: {d[k]}', end='')
 
-        if k == 'trade_mode':
-            print('0: SYMBOL_TRADE_MODE_DISABLED,',
-                    '1: SYMBOL_TRADE_MODE_LONGONLY,',
-                    '2: SYMBOL_TRADE_MODE_SHORTONLY,',
-                    '3: SYMBOL_TRADE_MODE_CLOSEONLY,',
-                    '4: SYMBOL_TRADE_MODE_FULL')
+        if k == 'chart_mode':
+            print(f' ({ENUM_SYMBOL_CHART_MODE(d[k])})', end='')
+        elif k == 'trade_mode':
+            print(f' ({ENUM_SYMBOL_TRADE_MODE(d[k])})', end='')
         elif k == 'trade_exemode':
-            print('0: SYMBOL_TRADE_EXECUTION_REQUEST,',    # order_send() deviation works.
-                    '1: SYMBOL_TRADE_EXECUTION_INSTANT,',  # order_send() deviation works.
-                    '2: SYMBOL_TRADE_EXECUTION_MARKET,',
-                    '3: SYMBOL_TRADE_EXECUTION_EXCHANGE')
+            print(f' ({ENUM_SYMBOL_TRADE_EXECUTION(d[k])})', end='')
+        print('')
 
 if __name__ == '__main__':
     main()
