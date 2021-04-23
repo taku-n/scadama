@@ -92,6 +92,8 @@ class FrameMainImpl(ui.FrameMain):
         sl = self.spinctrl_sl.GetValue()
         tp = self.spinctrl_tp.GetValue()
 
+        if not os.path.exists('spin.toml'):
+            init_spin_toml()
         spin_toml = toml.load('spin.toml')
         spin_toml['spin'][symbol] = {'sp_lim': sp_lim, 'lot': lot, 'slip': slip, 'sl': sl, 'tp': tp}
         with open('spin.toml', 'w') as f:
@@ -265,7 +267,20 @@ def change_symbol(it, symbol):
     set_spin(it, symbol)
     it.q_ctrl.put(it.symbol)
 
+def init_spin_toml():
+    with open('spin.toml', mode='w') as f:
+        f.write('''\
+[spin.EURUSD]
+sp_lim = 0
+lot = 0.01
+slip = 0
+sl = 0
+tp = 0
+''')
+
 def set_spin(it, symbol):
+    if not os.path.exists('spin.toml'):
+        init_spin_toml()
     spin_toml = toml.load('spin.toml')
     if symbol in spin_toml['spin']:
         spin_data = spin_toml['spin'][symbol]

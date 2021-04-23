@@ -1,3 +1,5 @@
+spin.toml
+
 # wxGlade
 *.bak
 _ui_*
