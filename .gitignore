@@ -3,6 +3,7 @@ spin.toml
 # wxGlade
 *.bak
 _ui_*
+*wxg.autosave*
 
 # PyInstaller
 build

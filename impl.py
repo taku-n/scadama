@@ -10,10 +10,20 @@ import toml
 import wx.stc
 
 import ui
+from enums import *
 
 class FrameMainImpl(ui.FrameMain):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
+
+        self.q_ctrl      = None  # Queue:       Interprocess communication for control.
+        self.q_tick      = None  # Queue:       Interprocess communication for ticks.
+        self.symbols     = None  # list of str: All available symbol names.
+        self.symbol      = None  # str:         A symbol that you are trading.
+        self.symbol_info = None  # SymbolInfo:  Information of a symbol that you are trading.
+        self.bid         = None  # float
+        self.ask         = None  # float
+        self.spread      = None  # int
 
         # MetaTrader5
         print('MetaTrader5 package version:', mt5.__version__)
@@ -132,10 +142,12 @@ def connect(it):
             it.symbol = it.combobox_symbol.GetStringSelection()
 
         it.symbol_info = mt5.symbol_info(it.symbol)
+        print('symbol_info:', it.symbol_info)
         if not it.symbol_info.select:
             mt5.symbol_select(it.symbol, True)
         it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
         set_spin(it, it.symbol)
+        set_slippage_availability(it)
 
         # A thread to receive a tick.
         thread = Thread(target = recv_tick, args = (it, ))
@@ -258,13 +270,24 @@ def send_tick(q_ctrl, q_tick):  # Runs in a child process.
 
             sleep(0.001)
 
+def set_slippage_availability(it):
+    if ENUM_SYMBOL_TRADE_EXECUTION(it.symbol_info.trade_exemode) \
+            == ENUM_SYMBOL_TRADE_EXECUTION.SYMBOL_TRADE_EXECUTION_REQUEST \
+            or ENUM_SYMBOL_TRADE_EXECUTION(it.symbol_info.trade_exemode) \
+            == ENUM_SYMBOL_TRADE_EXECUTION.SYMBOL_TRADE_EXECUTION_INSTANT:
+        it.spinctrl_slippage.Enable()
+    else:
+        it.spinctrl_slippage.Disable()
+
 def change_symbol(it, symbol):
     it.symbol = symbol
-    it.symbol_info = mt5.symbol_info(it.symbol)
-    if not it.symbol_info.select:
-        mt5.symbol_select(it.symbol, True)
-    it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
+    symbol_info = it.symbol_info = mt5.symbol_info(symbol)
+
+    if not symbol_info.select:
+        mt5.symbol_select(symbol, True)
+    it.spinctrldouble_lot.SetMax(symbol_info.volume_max)
     set_spin(it, symbol)
+
     it.q_ctrl.put(it.symbol)
 
 def init_spin_toml():
