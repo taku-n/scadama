@@ -117,6 +117,15 @@ class FrameMainImpl(ui.FrameMain):
         close_all(self)
 
     def on_closing(self, event):
+#        if self.can_close_by:
+#            close_with_closing_by()
+#            self.SetStatusText('Not implemented.')
+#        else:
+#            result = close(self.symbol)
+#            if type(result) is mt5.OrderSendResult:
+#                self.SetStatusText(f'{result.retcode}: {result.comment}')
+#            else:
+#                self.SetStatusText(result)
         close(self)
 
     def on_closing_ask(self, event):
@@ -408,38 +417,47 @@ def send_order(order, symbol, price, lot, slip, stop, take):
         return 'error', res
 
 def close_ask(it):
-    print('close_ask()')
+    ps = mt5.positions_get(symbol=it.symbol)
 
-    total = mt5.positions_total()
+    if len(ps) == 0:
+        return
 
-    if total > 0:
-        print(total)
-        disable_close(it)
-        ps = mt5.positions_get(symbol=it.symbol)
-        print('len:', len(ps))
-        print(ps)
-        for p in ps:
-            print(p)
-            print(ENUM_ORDER_TYPE(p.type))
-        enable_close(it)
+    if it.can_close_by:
+        it.SetStatusText('Not implemented.')
     else:
-        print('No positions')
+        for p in ps:
+            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
+                res = close_position(p)
+        it.SetStatusText(f'{res.retcode}: {res.comment}')
 
 def close_bid(it):
-    print('close_bid()')
+    ps = mt5.positions_get(symbol=it.symbol)
 
-def close_by(it):
-    print('close_by()')
-    close_by_recursively(it.symbol)
+    if len(ps) == 0:
+        return
+
+    if it.can_close_by:
+        it.SetStatusText('Not implemented.')
+    else:
+        for p in ps:
+            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_SELL:
+                res = close_position(p)
+        it.SetStatusText(f'{res.retcode}: {res.comment}')
 
 def close(it):
-    print('close()')
-
     ps = mt5.positions_get(symbol=it.symbol)
+
+    if len(ps) == 0:
+        return
+
     if it.can_close_by:
-        print('Not implemented.')
+        it.SetStatusText('Not implemented.')
     else:
-        pass
+        for p in ps:
+            res = close_position(p)
+        print(res)
+        print(type(res) is mt5.OrderSendResult)
+        it.SetStatusText(f'{res.retcode}: {res.comment}')
 
 def close_all(it):
     ps = mt5.positions_get()
@@ -447,14 +465,32 @@ def close_all(it):
     if len(ps) == 0:
         return
 
-    disable_close(it)
     if it.can_close_by:
-        print('Not implemented.')
+        it.SetStatusText('Not implemented.')
     else:
         for p in ps:
             res = close_position(p)
-            it.SetStatusText(f'{res.retcode}: {res.comment}')
-    enable_close(it)
+        it.SetStatusText(f'{res.retcode}: {res.comment}')
+
+def close_position(p):  # p is a TradePosition.
+    req = {
+            'action': mt5.TRADE_ACTION_DEAL,
+            'price': p.price_current,
+            'symbol': p.symbol,
+            'volume': p.volume,
+            'position': p.ticket,
+    }
+
+    if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
+        req['type'] = mt5.ORDER_TYPE_SELL
+    else:
+        req['type'] = mt5.ORDER_TYPE_BUY
+
+    return mt5.order_send(req)
+
+def close_by(it):
+    print('close_by()')
+    close_by_recursively(it.symbol)
 
 def close_by_recursively(symbol):
     print('close_by_recursively()')
@@ -504,33 +540,3 @@ def close_by_recursively(symbol):
     print('Response:', res)
 
     close_by_recursively(symbol)
-
-def close_position(p):  # p is a TradePosition.
-    req = {
-            'action': mt5.TRADE_ACTION_DEAL,
-            'price': p.price_current,
-            'symbol': p.symbol,
-            'volume': p.volume,
-            'position': p.ticket,
-    }
-
-    if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
-        req['type'] = mt5.ORDER_TYPE_SELL
-    else:
-        req['type'] = mt5.ORDER_TYPE_BUY
-
-    return mt5.order_send(req)
-
-def enable_close(it):
-    it.button_close_ask.Enable()
-    it.button_close_bid.Enable()
-    it.button_close_by.Enable()
-    it.button_close.Enable()
-    it.button_close_all.Enable()
-
-def disable_close(it):
-    it.button_close_ask.Disable()
-    it.button_close_bid.Disable()
-    it.button_close_by.Disable()
-    it.button_close.Disable()
-    it.button_close_all.Disable()
