@@ -10,6 +10,7 @@ import toml
 import wx.stc
 
 import ui
+import order
 from enums import *
 
 class FrameMainImpl(ui.FrameMain):
@@ -75,12 +76,12 @@ class FrameMainImpl(ui.FrameMain):
         sl = self.spinctrl_sl.GetValue()
         tp = self.spinctrl_tp.GetValue()
 
-        code, msg = send_order('sell', self.symbol, event.price, lot, slip, sl, tp)
+        result = order.send_order('sell', self.symbol, event.price, lot, slip, sl, tp)
 
-        if code == 'done':
-            print('Done:', msg)
+        if type(result) is mt5.OrderSendResult:
+            self.SetStatusText(f'{result.retcode}: {result.comment}')
         else:
-            print('Error:', msg)
+            self.SetStatusText(result)
 
     def on_ask_order(self, event):
         lot = self.spinctrldouble_lot.GetValue()
@@ -88,12 +89,13 @@ class FrameMainImpl(ui.FrameMain):
         sl = self.spinctrl_sl.GetValue()
         tp = self.spinctrl_tp.GetValue()
 
-        code, msg = send_order('buy', self.symbol, event.price, lot, slip, sl, tp)
+        result = order.send_order('buy', self.symbol, event.price, lot, slip, sl, tp)
 
-        if code == 'done':
-            print('Done:', msg)
+        if type(result) is mt5.OrderSendResult:
+            self.SetStatusText(f'{result.retcode}: {result.comment}')
         else:
-            print('Error:', msg)
+            self.SetStatusText(result)
+
 
     def on_setting_spin(self, event):
         symbol = self.symbol
@@ -111,28 +113,51 @@ class FrameMainImpl(ui.FrameMain):
             toml.dump(spin_toml, f)
 
     def on_closing_bid(self, event):
-        close_bid(self)
+        if self.can_close_by:
+            order.close_bid_with_closing_by()
+            self.SetStatusText('Not implemented.')
+        else:
+            result = order.close_bid(self.symbol)
+            if type(result) is mt5.OrderSendResult:
+                self.SetStatusText(f'{result.retcode}: {result.comment}')
+            else:
+                self.SetStatusText(result)
 
     def on_closing_all(self, event):
-        close_all(self)
+        if self.can_close_by:
+            order.close_all_with_closing_by()
+            self.SetStatusText('Not implemented.')
+        else:
+            result = order.close_all()
+            if type(result) is mt5.OrderSendResult:
+                self.SetStatusText(f'{result.retcode}: {result.comment}')
+            else:
+                self.SetStatusText(result)
 
     def on_closing(self, event):
-#        if self.can_close_by:
-#            close_with_closing_by()
-#            self.SetStatusText('Not implemented.')
-#        else:
-#            result = close(self.symbol)
-#            if type(result) is mt5.OrderSendResult:
-#                self.SetStatusText(f'{result.retcode}: {result.comment}')
-#            else:
-#                self.SetStatusText(result)
-        close(self)
+        if self.can_close_by:
+            order.close_with_closing_by()
+            self.SetStatusText('Not implemented.')
+        else:
+            result = order.close(self.symbol)
+            if type(result) is mt5.OrderSendResult:
+                self.SetStatusText(f'{result.retcode}: {result.comment}')
+            else:
+                self.SetStatusText(result)
 
     def on_closing_ask(self, event):
-        close_ask(self)
+        if self.can_close_by:
+            order.close_ask_with_closing_by()
+            self.SetStatusText('Not implemented.')
+        else:
+            result = order.close_ask(self.symbol)
+            if type(result) is mt5.OrderSendResult:
+                self.SetStatusText(f'{result.retcode}: {result.comment}')
+            else:
+                self.SetStatusText(result)
 
     def on_closing_by(self, event):
-        close_by(self)
+        order.close_by(self.symbol)
 
     def on_close(self, event):
         self.q_ctrl.put('disconnect')  # Child Process Disconnection
@@ -149,6 +174,16 @@ def connect(it):
         it.SetStatusText('Connected to ' + client)
         print('Terminal Info:', mt5.terminal_info())
         print('MetaTrader 5 version:', mt5.version())
+
+        account_info = mt5.account_info()
+        if ENUM_ACCOUNT_TRADE_MODE(account_info.trade_mode) \
+                == ENUM_ACCOUNT_TRADE_MODE.ACCOUNT_TRADE_MODE_DEMO:
+            it.SetTitle('Scadama [DEMO]')
+        elif ENUM_ACCOUNT_TRADE_MODE(account_info.trade_mode) \
+                == ENUM_ACCOUNT_TRADE_MODE.ACCOUNT_TRADE_MODE_CONTEST:
+            it.SetTitle('Scadama [CONTEST]')
+        else:
+            it.SetTitle('Scadama')
 
         # combobox_symbol
 
@@ -167,7 +202,6 @@ def connect(it):
             it.symbol = it.combobox_symbol.GetStringSelection()
 
         it.symbol_info = mt5.symbol_info(it.symbol)
-        print('symbol_info:', it.symbol_info)
         if not it.symbol_info.select:
             mt5.symbol_select(it.symbol, True)
         it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
@@ -355,188 +389,3 @@ def set_spin(it, symbol):
         it.spinctrl_slippage.SetValue(0)
         it.spinctrl_sl.SetValue(0)
         it.spinctrl_tp.SetValue(0)
-
-def send_order(order, symbol, price, lot, slip, stop, take):
-    symbol_info = mt5.symbol_info(symbol)
-    if not symbol_info:
-        return 'error', 'Getting symbol infomation failed.'
-
-    if not symbol_info.select:
-        return 'error', 'Symbol is not selected.'
-
-    pt = symbol_info.point
-
-    if order == 'buy':
-        type = mt5.ORDER_TYPE_BUY
-
-        if stop != 0:
-            sl = price - stop * pt
-        else:
-            sl = 0.0
-
-        if take != 0:
-            tp = price + take * pt
-        else:
-            tp = 0.0
-    elif order == 'sell':
-        type = mt5.ORDER_TYPE_SELL
-
-        if stop != 0:
-            sl = price + stop * pt
-        else:
-            sl = 0.0
-
-        if take != 0:
-            tp = price - take * pt
-        else:
-            tp = 0.0
-    else:
-        return 'error', 'Invalid order type.'
-
-    req = {'action': mt5.TRADE_ACTION_DEAL,
-            'symbol': symbol,
-            'volume': lot,
-            'type': type,
-            'price': price,
-            'sl': sl,
-            'tp': tp,
-            'deviation': slip,
-            'magic': 0,
-            'comment': '',
-            'type_time': mt5.ORDER_TIME_GTC,
-            'type_filling': mt5.ORDER_FILLING_FOK}
-
-    print(req)
-    res = mt5.order_send(req)
-
-    print(res)
-
-    if res.retcode == mt5.TRADE_RETCODE_DONE:
-        return 'done', res
-    else:
-        return 'error', res
-
-def close_ask(it):
-    ps = mt5.positions_get(symbol=it.symbol)
-
-    if len(ps) == 0:
-        return
-
-    if it.can_close_by:
-        it.SetStatusText('Not implemented.')
-    else:
-        for p in ps:
-            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
-                res = close_position(p)
-        it.SetStatusText(f'{res.retcode}: {res.comment}')
-
-def close_bid(it):
-    ps = mt5.positions_get(symbol=it.symbol)
-
-    if len(ps) == 0:
-        return
-
-    if it.can_close_by:
-        it.SetStatusText('Not implemented.')
-    else:
-        for p in ps:
-            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_SELL:
-                res = close_position(p)
-        it.SetStatusText(f'{res.retcode}: {res.comment}')
-
-def close(it):
-    ps = mt5.positions_get(symbol=it.symbol)
-
-    if len(ps) == 0:
-        return
-
-    if it.can_close_by:
-        it.SetStatusText('Not implemented.')
-    else:
-        for p in ps:
-            res = close_position(p)
-        print(res)
-        print(type(res) is mt5.OrderSendResult)
-        it.SetStatusText(f'{res.retcode}: {res.comment}')
-
-def close_all(it):
-    ps = mt5.positions_get()
-
-    if len(ps) == 0:
-        return
-
-    if it.can_close_by:
-        it.SetStatusText('Not implemented.')
-    else:
-        for p in ps:
-            res = close_position(p)
-        it.SetStatusText(f'{res.retcode}: {res.comment}')
-
-def close_position(p):  # p is a TradePosition.
-    req = {
-            'action': mt5.TRADE_ACTION_DEAL,
-            'price': p.price_current,
-            'symbol': p.symbol,
-            'volume': p.volume,
-            'position': p.ticket,
-    }
-
-    if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
-        req['type'] = mt5.ORDER_TYPE_SELL
-    else:
-        req['type'] = mt5.ORDER_TYPE_BUY
-
-    return mt5.order_send(req)
-
-def close_by(it):
-    print('close_by()')
-    close_by_recursively(it.symbol)
-
-def close_by_recursively(symbol):
-    print('close_by_recursively()')
-    total = mt5.positions_total()
-    print('total:', total)
-    ps = mt5.positions_get(symbol=symbol)
-    print('positions:', ps)
-    print('len:', len(ps))
-
-    if len(ps) < 2:
-        print('returning')
-        return
-
-    pos = {}
-    pos_by = {}
-
-    for p in ps:
-        if pos == {}:
-            pos['type'] = ENUM_ORDER_TYPE(p.type)
-            pos['ticket'] = p.ticket
-        elif pos['type'] == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
-            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_SELL:
-                pos_by['type'] = ENUM_ORDER_TYPE(p.type)
-                pos_by['ticket'] = p.ticket
-                break
-            else:
-                continue
-        elif pos['type'] == ENUM_ORDER_TYPE.ORDER_TYPE_SELL:
-            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
-                pos_by['type'] = ENUM_ORDER_TYPE(p.type)
-                pos_by['ticket'] = p.ticket
-                break
-            else:
-                continue
-
-    print('pos:', pos)
-    print('pos_by:', pos_by)
-    req = {
-            'action': mt5.TRADE_ACTION_CLOSE_BY,
-            'position': pos['ticket'],
-            'position_by': pos_by['ticket'],
-    }
-    print('checking...')
-    res = mt5.order_check(req)
-    print('Check:', res)
-    res = mt5.order_send(req)
-    print('Response:', res)
-
-    close_by_recursively(symbol)
