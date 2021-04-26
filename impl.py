@@ -16,14 +16,15 @@ class FrameMainImpl(ui.FrameMain):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
 
-        self.q_ctrl      = None  # Queue:       Interprocess communication for control.
-        self.q_tick      = None  # Queue:       Interprocess communication for ticks.
-        self.symbols     = None  # list of str: All available symbol names.
-        self.symbol      = None  # str:         A symbol that you are trading.
-        self.symbol_info = None  # SymbolInfo:  Information of a symbol that you are trading.
-        self.bid         = None  # float
-        self.ask         = None  # float
-        self.spread      = None  # int
+        self.q_ctrl       = None  # Queue:       Interprocess communication for control.
+        self.q_tick       = None  # Queue:       Interprocess communication for ticks.
+        self.symbols      = None  # list of str: All available symbol names.
+        self.symbol       = None  # str:         A symbol that you are trading.
+        self.symbol_info  = None  # SymbolInfo:  Information of a symbol that you are trading.
+        self.can_close_by = None  # bool:        True: Can close a position by another one.
+        self.bid          = None  # float
+        self.ask          = None  # float
+        self.spread       = None  # int
 
         # MetaTrader5
         print('MetaTrader5 package version:', mt5.__version__)
@@ -109,6 +110,21 @@ class FrameMainImpl(ui.FrameMain):
         with open('spin.toml', 'w') as f:
             toml.dump(spin_toml, f)
 
+    def on_closing_bid(self, event):
+        close_bid(self)
+
+    def on_closing_all(self, event):
+        close_all(self)
+
+    def on_closing(self, event):
+        close(self)
+
+    def on_closing_ask(self, event):
+        close_ask(self)
+
+    def on_closing_by(self, event):
+        close_by(self)
+
     def on_close(self, event):
         self.q_ctrl.put('disconnect')  # Child Process Disconnection
         mt5.shutdown()
@@ -148,6 +164,7 @@ def connect(it):
         it.spinctrldouble_lot.SetMax(it.symbol_info.volume_max)
         set_spin(it, it.symbol)
         set_slippage_availability(it)
+        set_close_by_availability(it)
 
         # A thread to receive a tick.
         thread = Thread(target = recv_tick, args = (it, ))
@@ -279,6 +296,15 @@ def set_slippage_availability(it):
     else:
         it.spinctrl_slippage.Disable()
 
+def set_close_by_availability(it):
+    if SYMBOL_ORDER_MODE(it.symbol_info.order_mode) & SYMBOL_ORDER_MODE.SYMBOL_ORDER_CLOSEBY \
+            != SYMBOL_ORDER_MODE(0):
+        it.can_close_by = True
+        it.button_close_by.Enable()
+    else:
+        it.can_close_by = False
+        it.button_close_by.Disable()
+
 def change_symbol(it, symbol):
     it.symbol = symbol
     symbol_info = it.symbol_info = mt5.symbol_info(symbol)
@@ -287,6 +313,8 @@ def change_symbol(it, symbol):
         mt5.symbol_select(symbol, True)
     it.spinctrldouble_lot.SetMax(symbol_info.volume_max)
     set_spin(it, symbol)
+    set_slippage_availability(it)
+    set_close_by_availability(it)
 
     it.q_ctrl.put(it.symbol)
 
@@ -378,3 +406,131 @@ def send_order(order, symbol, price, lot, slip, stop, take):
         return 'done', res
     else:
         return 'error', res
+
+def close_ask(it):
+    print('close_ask()')
+
+    total = mt5.positions_total()
+
+    if total > 0:
+        print(total)
+        disable_close(it)
+        ps = mt5.positions_get(symbol=it.symbol)
+        print('len:', len(ps))
+        print(ps)
+        for p in ps:
+            print(p)
+            print(ENUM_ORDER_TYPE(p.type))
+        enable_close(it)
+    else:
+        print('No positions')
+
+def close_bid(it):
+    print('close_bid()')
+
+def close_by(it):
+    print('close_by()')
+    close_by_recursively(it.symbol)
+
+def close(it):
+    print('close()')
+
+    ps = mt5.positions_get(symbol=it.symbol)
+    if it.can_close_by:
+        print('Not implemented.')
+    else:
+        pass
+
+def close_all(it):
+    ps = mt5.positions_get()
+
+    if len(ps) == 0:
+        return
+
+    disable_close(it)
+    if it.can_close_by:
+        print('Not implemented.')
+    else:
+        for p in ps:
+            res = close_position(p)
+            it.SetStatusText(f'{res.retcode}: {res.comment}')
+    enable_close(it)
+
+def close_by_recursively(symbol):
+    print('close_by_recursively()')
+    total = mt5.positions_total()
+    print('total:', total)
+    ps = mt5.positions_get(symbol=symbol)
+    print('positions:', ps)
+    print('len:', len(ps))
+
+    if len(ps) < 2:
+        print('returning')
+        return
+
+    pos = {}
+    pos_by = {}
+
+    for p in ps:
+        if pos == {}:
+            pos['type'] = ENUM_ORDER_TYPE(p.type)
+            pos['ticket'] = p.ticket
+        elif pos['type'] == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
+            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_SELL:
+                pos_by['type'] = ENUM_ORDER_TYPE(p.type)
+                pos_by['ticket'] = p.ticket
+                break
+            else:
+                continue
+        elif pos['type'] == ENUM_ORDER_TYPE.ORDER_TYPE_SELL:
+            if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
+                pos_by['type'] = ENUM_ORDER_TYPE(p.type)
+                pos_by['ticket'] = p.ticket
+                break
+            else:
+                continue
+
+    print('pos:', pos)
+    print('pos_by:', pos_by)
+    req = {
+            'action': mt5.TRADE_ACTION_CLOSE_BY,
+            'position': pos['ticket'],
+            'position_by': pos_by['ticket'],
+    }
+    print('checking...')
+    res = mt5.order_check(req)
+    print('Check:', res)
+    res = mt5.order_send(req)
+    print('Response:', res)
+
+    close_by_recursively(symbol)
+
+def close_position(p):  # p is a TradePosition.
+    req = {
+            'action': mt5.TRADE_ACTION_DEAL,
+            'price': p.price_current,
+            'symbol': p.symbol,
+            'volume': p.volume,
+            'position': p.ticket,
+    }
+
+    if ENUM_ORDER_TYPE(p.type) == ENUM_ORDER_TYPE.ORDER_TYPE_BUY:
+        req['type'] = mt5.ORDER_TYPE_SELL
+    else:
+        req['type'] = mt5.ORDER_TYPE_BUY
+
+    return mt5.order_send(req)
+
+def enable_close(it):
+    it.button_close_ask.Enable()
+    it.button_close_bid.Enable()
+    it.button_close_by.Enable()
+    it.button_close.Enable()
+    it.button_close_all.Enable()
+
+def disable_close(it):
+    it.button_close_ask.Disable()
+    it.button_close_bid.Disable()
+    it.button_close_by.Disable()
+    it.button_close.Disable()
+    it.button_close_all.Disable()
