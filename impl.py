@@ -11,28 +11,34 @@ import wx.stc
 
 import ui
 import order
+import status
 from enums import *
 
 class FrameMainImpl(ui.FrameMain):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
 
-        self.q_ctrl       = None  # Queue:       Interprocess communication for control.
-        self.q_tick       = None  # Queue:       Interprocess communication for ticks.
-        self.symbols      = None  # list of str: All available symbol names.
-        self.symbol       = None  # str:         A symbol that you are trading.
-        self.symbol_info  = None  # SymbolInfo:  Information of a symbol that you are trading.
-        self.can_close_by = None  # bool:        True: Can close a position by another one.
-        self.bid          = None  # float
-        self.ask          = None  # float
-        self.spread       = None  # int
+        self.VERSION          = '1.1.2'
+
+        self.q_ctrl           = None  # Queue:       Interprocess communication for control.
+        self.q_tick           = None  # Queue:       Interprocess communication for ticks.
+        self.account_currency = None  # str
+        self.account_currency_digits = None  # int
+        self.account_number   = None  # int
+        self.symbols          = None  # list of str: All available symbol names.
+        self.symbol           = None  # str:         A symbol that you are trading.
+        self.symbol_info      = None  # SymbolInfo:  Information of a symbol that you are trading.
+        self.can_close_by     = None  # bool:        True: Can close a position by another one.
+        self.bid              = None  # float
+        self.ask              = None  # float
+        self.spread           = None  # int
 
         # MetaTrader5
-        print('MetaTrader5 package version:', mt5.__version__)
-        print('MetaTrader5 package author:', mt5.__author__)
-        self.SetStatusText('MetaTrader5 package version: ' + mt5.__version__)
+        self.SetStatusText(f'Scadama {self.VERSION}, MetaTrader5 package {mt5.__version__}')
 
         # Load configuration.
+        if not os.path.exists('config.toml'):
+            init_config_toml()
         config = toml.load('config.toml')
 
         # Setup queues.
@@ -105,12 +111,23 @@ class FrameMainImpl(ui.FrameMain):
         sl = self.spinctrl_sl.GetValue()
         tp = self.spinctrl_tp.GetValue()
 
-        if not os.path.exists('spin.toml'):
-            init_spin_toml()
-        spin_toml = toml.load('spin.toml')
-        spin_toml['spin'][symbol] = {'sp_lim': sp_lim, 'lot': lot, 'slip': slip, 'sl': sl, 'tp': tp}
+        if os.path.exists('spin.toml'):
+            spin_toml = toml.load('spin.toml')
+        else:
+            spin_toml = {}
+
+        spin_toml[symbol] = {'sp_lim': sp_lim, 'lot': lot, 'slip': slip, 'sl': sl, 'tp': tp}
         with open('spin.toml', 'w') as f:
             toml.dump(spin_toml, f)
+
+        # Don't forget to check "Store as attribute" on wxGlade to change StaticText value.
+        estimated_commission_per_lot = status.estimate_commission(self.symbol)
+        if estimated_commission_per_lot:
+            estimated_commission = estimated_commission_per_lot * lot
+            digit = self.account_currency_digits + 3
+            self.statictext_commission_value.SetLabel(f'{estimated_commission:.{digit}f}')
+        else:
+            self.statictext_commission_value.SetLabel('No data.')
 
     def on_closing_bid(self, event):
         if self.can_close_by:
@@ -176,6 +193,7 @@ def connect(it):
         print('MetaTrader 5 version:', mt5.version())
 
         account_info = mt5.account_info()
+
         if ENUM_ACCOUNT_TRADE_MODE(account_info.trade_mode) \
                 == ENUM_ACCOUNT_TRADE_MODE.ACCOUNT_TRADE_MODE_DEMO:
             it.SetTitle('Scadama [DEMO]')
@@ -185,7 +203,11 @@ def connect(it):
         else:
             it.SetTitle('Scadama')
 
-        # combobox_symbol
+        it.account_number          = account_info.login
+        it.account_currency        = account_info.currency
+        it.account_currency_digits = account_info.currency_digits
+
+        # combobox_symbol and initializing symbol
 
         symbols_info = mt5.symbols_get()
         symbols = []
@@ -330,6 +352,31 @@ def send_tick(q_ctrl, q_tick):  # Runs in a child process.
 
             sleep(0.001)
 
+def init_config_toml():
+    with open('config.toml', mode='w') as f:
+        f.write('''\
+# Paths to your MetaTrader 5 clients.
+client = [
+  'C:\local\mt5\mq\\terminal64.exe',
+  'C:\local\mt5\\tt\\terminal64.exe',
+  'C:\your\mt5\\terminal64.exe',
+]
+
+# Symbols for quick buttons.
+symbol = [
+  'EURUSD',
+  'USDJPY',
+]
+
+# Main Window Size
+# If the x value is 0, the window size will be decided automatically.
+# [Windows] If you get the window scale setting 200%,
+#           the window size will be twice as large as this settings.
+[size]
+x = 0
+y = 0
+''')
+
 def set_slippage_availability(it):
     if ENUM_SYMBOL_TRADE_EXECUTION(it.symbol_info.trade_exemode) \
             == ENUM_SYMBOL_TRADE_EXECUTION.SYMBOL_TRADE_EXECUTION_REQUEST \
@@ -361,31 +408,32 @@ def change_symbol(it, symbol):
 
     it.q_ctrl.put(it.symbol)
 
-def init_spin_toml():
-    with open('spin.toml', mode='w') as f:
-        f.write('''\
-[spin.EURUSD]
-sp_lim = 0
-lot = 0.01
-slip = 0
-sl = 0
-tp = 0
-''')
-
 def set_spin(it, symbol):
-    if not os.path.exists('spin.toml'):
-        init_spin_toml()
-    spin_toml = toml.load('spin.toml')
-    if symbol in spin_toml['spin']:
-        spin_data = spin_toml['spin'][symbol]
+    if os.path.exists('spin.toml'):
+        spin_toml = toml.load('spin.toml')
+    else:
+        spin_toml = {}
+
+    lot = 0.0
+    if symbol in spin_toml:
+        spin_data = spin_toml[symbol]
         it.spinctrl_spread.SetValue(spin_data['sp_lim'])
         it.spinctrldouble_lot.SetValue(spin_data['lot'])
         it.spinctrl_slippage.SetValue(spin_data['slip'])
         it.spinctrl_sl.SetValue(spin_data['sl'])
         it.spinctrl_tp.SetValue(spin_data['tp'])
+        lot = spin_data['lot']
     else:
         it.spinctrl_spread.SetValue(0)
         it.spinctrldouble_lot.SetValue(0.0)
         it.spinctrl_slippage.SetValue(0)
         it.spinctrl_sl.SetValue(0)
         it.spinctrl_tp.SetValue(0)
+
+    estimated_commission_per_lot = status.estimate_commission(it.symbol)
+    if estimated_commission_per_lot:
+        estimated_commission = estimated_commission_per_lot * lot
+        digit = it.account_currency_digits + 3
+        it.statictext_commission_value.SetLabel(f'{estimated_commission:.{digit}f}')
+    else:
+        it.statictext_commission_value.SetLabel('No data.')

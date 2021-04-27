@@ -1,3 +1,4 @@
+config.toml
 spin.toml
 
 # wxGlade
@@ -15,3 +16,5 @@ dist
 .ionide/
 __pycache__
 log.txt
+
+memo.txt
