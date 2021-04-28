@@ -123,8 +123,10 @@ class FrameMainImpl(ui.FrameMain):
         # Don't forget to check "Store as attribute" on wxGlade to change StaticText value.
         estimated_commission_per_lot = status.estimate_commission(self.symbol)
         if estimated_commission_per_lot:
-            estimated_commission = estimated_commission_per_lot * lot
             digit = self.account_currency_digits + 3
+            self.statictext_commission_per_lot_value.SetLabel(
+                    f'{estimated_commission_per_lot:.{digit}f}')
+            estimated_commission = estimated_commission_per_lot * lot
             self.statictext_commission_value.SetLabel(f'{estimated_commission:.{digit}f}')
         else:
             self.statictext_commission_value.SetLabel('No data.')
@@ -189,8 +191,11 @@ def connect(it):
         it.togglebutton_connect.SetLabel('Disconnect')
         print('Connected to', client)
         it.SetStatusText('Connected to ' + client)
-        print('Terminal Info:', mt5.terminal_info())
         print('MetaTrader 5 version:', mt5.version())
+
+        terminal_info = mt5.terminal_info()
+        if not terminal_info.trade_allowed:
+            it.SetStatusText('Trading is not allowed. (Tools -> Options -> Expert Advisors).')
 
         account_info = mt5.account_info()
 
@@ -432,8 +437,10 @@ def set_spin(it, symbol):
 
     estimated_commission_per_lot = status.estimate_commission(it.symbol)
     if estimated_commission_per_lot:
-        estimated_commission = estimated_commission_per_lot * lot
         digit = it.account_currency_digits + 3
+        it.statictext_commission_per_lot_value.SetLabel(
+                f'{estimated_commission_per_lot:.{digit}f}')
+        estimated_commission = estimated_commission_per_lot * lot
         it.statictext_commission_value.SetLabel(f'{estimated_commission:.{digit}f}')
     else:
         it.statictext_commission_value.SetLabel('No data.')
