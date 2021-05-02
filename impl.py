@@ -10,6 +10,7 @@ import toml
 import wx.stc
 
 import ui
+import impl_config
 import order
 import status
 from enums import *
@@ -59,6 +60,9 @@ class FrameMainImpl(ui.FrameMain):
         quick_symbols = config['symbol']
         self.symbol = quick_symbols[0]
         self.symbols = []
+
+    def on_config(self, event):
+        impl_config.FrameConfigImpl(wx.GetTopLevelParent(self), wx.ID_ANY)
 
     def on_connection(self, event):
         if self.togglebutton_connect.GetValue():  # Pressed
