@@ -19,7 +19,7 @@ class FrameMainImpl(ui.FrameMain):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
 
-        self.VERSION          = '1.1.2'
+        self.VERSION = '1.1.2'
 
         self.q_ctrl           = None  # Queue:       Interprocess communication for control.
         self.q_tick           = None  # Queue:       Interprocess communication for ticks.
@@ -33,6 +33,8 @@ class FrameMainImpl(ui.FrameMain):
         self.bid              = None  # float
         self.ask              = None  # float
         self.spread           = None  # int
+
+        self.selected = False  # bool: If True, it prevents invoking on_symbol_input().
 
         # MetaTrader5
         self.SetStatusText(f'Scadama {self.VERSION}, MetaTrader5 package {mt5.__version__}')
@@ -73,8 +75,13 @@ class FrameMainImpl(ui.FrameMain):
     def on_symbol_selection(self, event):
         symbol = self.combobox_symbol.GetStringSelection()
         change_symbol(self, symbol)
+        self.selected = True
 
     def on_symbol_input(self, event):
+        if self.selected:
+            self.selected = False
+            return
+
         symbol = self.combobox_symbol.GetValue()
         if symbol in self.symbols:
             change_symbol(self, symbol)
@@ -106,7 +113,11 @@ class FrameMainImpl(ui.FrameMain):
         else:
             self.SetStatusText(result)
 
-
+    # Save values of spins.
+    # This is also a workaround
+    # because wx's spins (only int? float?) value which you see is not the value which you get.
+    # But after you click somewhere else except the spin which you changed,
+    # a value which you see is the value which you get.
     def on_setting_spin(self, event):
         symbol = self.symbol
         sp_lim = self.spinctrl_spread.GetValue()
@@ -124,16 +135,8 @@ class FrameMainImpl(ui.FrameMain):
         with open('spin.toml', 'w') as f:
             toml.dump(spin_toml, f)
 
-        # Don't forget to check "Store as attribute" on wxGlade to change StaticText value.
-        estimated_commission_per_lot = status.estimate_commission(self.symbol)
-        if estimated_commission_per_lot:
-            digit = self.account_currency_digits + 3
-            self.statictext_commission_per_lot_value.SetLabel(
-                    f'{estimated_commission_per_lot:.{digit}f}')
-            estimated_commission = estimated_commission_per_lot * lot
-            self.statictext_commission_value.SetLabel(f'{estimated_commission:.{digit}f}')
-        else:
-            self.statictext_commission_value.SetLabel('No data.')
+        status.update_commission(self)
+        status.update_swap(self)
 
     def on_closing_bid(self, event):
         if self.can_close_by:
@@ -417,13 +420,12 @@ def change_symbol(it, symbol):
 
     it.q_ctrl.put(it.symbol)
 
-def set_spin(it, symbol):
+def set_spin(it, symbol):  # Set values of spins.
     if os.path.exists('spin.toml'):
         spin_toml = toml.load('spin.toml')
     else:
         spin_toml = {}
 
-    lot = 0.0
     if symbol in spin_toml:
         spin_data = spin_toml[symbol]
         it.spinctrl_spread.SetValue(spin_data['sp_lim'])
@@ -431,7 +433,6 @@ def set_spin(it, symbol):
         it.spinctrl_slippage.SetValue(spin_data['slip'])
         it.spinctrl_sl.SetValue(spin_data['sl'])
         it.spinctrl_tp.SetValue(spin_data['tp'])
-        lot = spin_data['lot']
     else:
         it.spinctrl_spread.SetValue(0)
         it.spinctrldouble_lot.SetValue(0.0)
@@ -439,12 +440,5 @@ def set_spin(it, symbol):
         it.spinctrl_sl.SetValue(0)
         it.spinctrl_tp.SetValue(0)
 
-    estimated_commission_per_lot = status.estimate_commission(it.symbol)
-    if estimated_commission_per_lot:
-        digit = it.account_currency_digits + 3
-        it.statictext_commission_per_lot_value.SetLabel(
-                f'{estimated_commission_per_lot:.{digit}f}')
-        estimated_commission = estimated_commission_per_lot * lot
-        it.statictext_commission_value.SetLabel(f'{estimated_commission:.{digit}f}')
-    else:
-        it.statictext_commission_value.SetLabel('No data.')
+    status.update_commission(it)
+    status.update_swap(it)
