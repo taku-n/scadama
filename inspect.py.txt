@@ -141,6 +141,12 @@ def symbol_info(symbol):
             print(f' ({ENUM_SYMBOL_TRADE_MODE(d[k])})', end='')
         elif k == 'trade_exemode':
             print(f' ({ENUM_SYMBOL_TRADE_EXECUTION(d[k])})', end='')
+        elif k == 'swap_mode':
+            print(f' ({ENUM_SYMBOL_SWAP_MODE(d[k])})', end='')
+        elif k == 'swap_rollover3days':
+            print(f' ({ENUM_DAY_OF_WEEK(d[k])})', end='')
+        elif k == 'order_mode':
+            print(f' ({SYMBOL_ORDER_MODE(d[k])})', end='')
         print('')
 
 if __name__ == '__main__':

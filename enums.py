@@ -48,6 +48,26 @@ class ENUM_SYMBOL_TRADE_EXECUTION(Enum):  # SymbolInfo.trade_exemode
     SYMBOL_TRADE_EXECUTION_MARKET   = auto()  # deviation of order_send() does not work.
     SYMBOL_TRADE_EXECUTION_EXCHANGE = auto()  # deviation of order_send() does not work.
 
+class ENUM_SYMBOL_SWAP_MODE(Enum):        # SymbolInfo.swap_mode
+    SYMBOL_SWAP_MODE_DISABLED         = 0
+    SYMBOL_SWAP_MODE_POINTS           = auto()
+    SYMBOL_SWAP_MODE_CURRENCY_SYMBOL  = auto()
+    SYMBOL_SWAP_MODE_CURRENCY_MARGIN  = auto()
+    SYMBOL_SWAP_MODE_CURRENCY_DEPOSIT = auto()
+    SYMBOL_SWAP_MODE_INTEREST_CURRENT = auto()
+    SYMBOL_SWAP_MODE_INTEREST_OPEN    = auto()
+    SYMBOL_SWAP_MODE_REOPEN_CURRENT   = auto()
+    SYMBOL_SWAP_MODE_REOPEN_BID       = auto()
+
+class ENUM_DAY_OF_WEEK(Enum):             # SymbolInfo.swap_rollover3days
+    SUNDAY    = 0
+    MONDAY    = auto()
+    TUESDAY   = auto()
+    WEDNESDAY = auto()
+    THURSDAY  = auto()
+    FRIDAY    = auto()
+    SATURDAY  = auto()
+
 
 # ENUM_ORDER_*
 # English:  https://www.mql5.com/en/docs/constants/tradingconstants/orderproperties
