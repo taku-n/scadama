@@ -100,6 +100,9 @@ class FrameMainImpl(ui.FrameMain):
         else:
             self.SetStatusText(result)
 
+        # I can not get a new position right after an order.
+        #status.update_average(self)
+
     def on_ask_order(self, event):
         lot = self.spinctrldouble_lot.GetValue()
         slip = self.spinctrl_slippage.GetValue()
@@ -112,6 +115,9 @@ class FrameMainImpl(ui.FrameMain):
             self.SetStatusText(f'{result.retcode}: {result.comment}')
         else:
             self.SetStatusText(result)
+
+        # I can not get a new position right after an order.
+        #status.update_average(self)
 
     # Save values of spins.
     # This is also a workaround
@@ -137,6 +143,7 @@ class FrameMainImpl(ui.FrameMain):
 
         status.update_commission(self)
         status.update_swap(self)
+        status.update_margin(self)
 
     def on_closing_bid(self, event):
         if self.can_close_by:
@@ -302,28 +309,9 @@ def recv_tick(it):  # Runs in a thread.
 
         if tick['error'] != '':
             it.SetStatusText(f'Error: {tick["error"]}')
-        continue
 
-        try:
-            button_ask.configure(text = f'{ask:.5f}')
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            sys.exit()
-
-        try:
-            button_bid.configure(text = f'{bid:.5f}')
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            sys.exit()
-
-        try:
-            label_spread.configure(text = f'{spread:.1f}')
-        except Exception as e:
-            if e.args != ():
-                write_log(e.args)
-            sys.exit()
+        # Show averages.
+        status.update_average(it)
 
 def send_tick(q_ctrl, q_tick):  # Runs in a child process.
     client = q_ctrl.get()
@@ -442,3 +430,4 @@ def set_spin(it, symbol):  # Set values of spins.
 
     status.update_commission(it)
     status.update_swap(it)
+    status.update_margin(it)

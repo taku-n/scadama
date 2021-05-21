@@ -5,6 +5,31 @@ import MetaTrader5 as mt5
 
 from enums import *
 
+def update_average(it):
+    ps = mt5.positions_get(symbol=it.symbol)
+    buy_sum = 0.0
+    buy_lot = 0.0
+    sell_sum = 0.0
+    sell_lot = 0.0
+
+    for p in ps:
+        if p.type == 0:  # Buy position.
+            buy_sum += p.price_open * p.volume
+            buy_lot += p.volume
+        elif p.type == 1:  # Sell position.
+            sell_sum += p.price_open * p.volume
+            sell_lot += p.volume
+
+    if buy_lot != 0.0:
+        it.statictext_average_buy.SetLabel(f'{(buy_sum / buy_lot):.{it.symbol_info.digits}f}')
+    else:
+        it.statictext_average_buy.SetLabel('0')
+
+    if sell_lot != 0.0:
+        it.statictext_average_sell.SetLabel(f'{(sell_sum / sell_lot):.{it.symbol_info.digits}f}')
+    else:
+        it.statictext_average_sell.SetLabel('0')
+
 def update_commission(it):
     lot = it.spinctrldouble_lot.GetValue()
 
@@ -22,7 +47,9 @@ def update_commission(it):
 
 def estimate_commission(symbol):  # Estimate commission from history.
     from_date = datetime.datetime.now() - datetime.timedelta(days=180)
-    to_date   = datetime.datetime.now()
+
+    # Workaround: mt5.history_deals_get() does not get today's data.
+    to_date   = datetime.datetime.now() + datetime.timedelta(days=1)
 
     ds = mt5.history_deals_get(from_date, to_date, group=symbol)
 
@@ -96,20 +123,6 @@ def calculate_swap(it):
     else:
         return math.nan, math.nan
 
-    # EURUSD
-    # currency_margin: EUR
-    # currency_profit: USD
-    # point: 0.000010
-    # swap_mode: 1
-    # swap_rollover3days: 3
-    # swap_long: -3.38
-    # swap_short: -1.19
-    #
-    # Ask で換算するか Bid で換算するか
-    # そもそも Ask と Bid をどうやって得るのか
-    # スプレッドがすごく開いたときに
-    # 計算してしまう可能性を考えると Ask と Bid の平均値がいいのかもしれない
-
 def get_day_of_week_str(enum_day_of_week):
     if enum_day_of_week == ENUM_DAY_OF_WEEK.SUNDAY:
         return 'Sunday'
@@ -127,3 +140,15 @@ def get_day_of_week_str(enum_day_of_week):
         return 'Saturday'
     else:
         return 'Invalid'
+
+def update_margin(it):
+    lot = it.spinctrldouble_lot.GetValue()
+    price = it.symbol_info.ask
+    margin = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, it.symbol, lot, price)
+    if lot != 0.0:
+        margin_per_lot = margin / lot
+    else:
+        margin_per_lot = 0
+
+    it.statictext_margin_value.SetLabel(f'{margin:.{it.account_currency_digits}f}')
+    it.statictext_margin_per_lot_value.SetLabel(f'{margin_per_lot:.{it.account_currency_digits}f}')
