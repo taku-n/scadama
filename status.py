@@ -144,10 +144,12 @@ def get_day_of_week_str(enum_day_of_week):
 def update_margin(it):
     lot = it.spinctrldouble_lot.GetValue()
     price = it.symbol_info.ask
-    margin = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, it.symbol, lot, price)
+
     if lot != 0.0:
+        margin = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, it.symbol, lot, price)
         margin_per_lot = margin / lot
     else:
+        margin = 0
         margin_per_lot = 0
 
     it.statictext_margin_value.SetLabel(f'{margin:.{it.account_currency_digits}f}')

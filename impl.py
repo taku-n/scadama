@@ -19,7 +19,7 @@ class FrameMainImpl(ui.FrameMain):
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
 
-        self.VERSION = '1.3.0'
+        self.VERSION = '1.3.1'
 
         self.q_ctrl           = None  # Queue:       Interprocess communication for control.
         self.q_tick           = None  # Queue:       Interprocess communication for ticks.
