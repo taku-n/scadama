@@ -90,6 +90,8 @@ def update_swap(it):
         it.statictext_swap_x3_value.SetLabel(day_of_week)
 
 def calculate_swap(it):
+    si = it.symbol_info
+
     if it.account_currency == 'USD':
         return math.nan, math.nan
     elif it.account_currency == 'EUR':
@@ -114,6 +116,18 @@ def calculate_swap(it):
                 usdjpy_middle_rate = (usdjpy.ask + usdjpy.bid) / 2  # For a flash huge spread.
                 swap_long = swap_long_in_usd * usdjpy_middle_rate
                 swap_short = swap_short_in_usd * usdjpy_middle_rate
+
+                return swap_long, swap_short
+            elif si.currency_margin == 'USD':
+                swap_long_in_xyz = si.point * si.swap_long * si.trade_contract_size
+                swap_short_in_xyz = si.point * si.swap_short * si.trade_contract_size
+
+                xyzusd = 1.0 / ((si.bid + si.ask) / 2.0)
+                usdjpy_tick = mt5.symbol_info_tick('USDJPY')
+                usdjpy = (usdjpy_tick.bid + usdjpy_tick.ask) / 2.0
+
+                swap_long = swap_long_in_xyz * xyzusd * usdjpy
+                swap_short = swap_short_in_xyz * xyzusd * usdjpy
 
                 return swap_long, swap_short
             else: 
