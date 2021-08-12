@@ -89,6 +89,7 @@ def update_swap(it):
         it.statictext_swap_short_per_lot_value.SetLabel('N/A')
         it.statictext_swap_x3_value.SetLabel(day_of_week)
 
+# Returns swap of long per a lot and swap of short per a lot.
 def calculate_swap(it):
     si = it.symbol_info
 
@@ -132,6 +133,28 @@ def calculate_swap(it):
                 return swap_long, swap_short
             else: 
                 return math.nan, math.nan
+        elif ENUM_SYMBOL_SWAP_MODE(si.swap_mode) \
+                == ENUM_SYMBOL_SWAP_MODE.SYMBOL_SWAP_MODE_INTEREST_CURRENT:
+            if si.currency_profit == 'JPY':
+                xyzjpy = (si.bid + si.ask) / 2.0
+
+                swap_long = (xyzjpy * (si.swap_long / 100) * si.trade_contract_size) / 360
+                swap_short = (xyzjpy * (si.swap_short / 100) * si.trade_contract_size) / 360
+
+                return swap_long, swap_short
+            elif si.currency_profit == 'USD':
+                xyzusd = (si.bid + si.ask) / 2.0
+
+                swap_long_in_usd = (xyzusd * (si.swap_long / 100) * si.trade_contract_size) / 360
+                swap_short_in_usd = (xyzusd * (si.swap_short / 100) * si.trade_contract_size) / 360
+
+                usdjpy_tick = mt5.symbol_info_tick('USDJPY')
+                usdjpy = (usdjpy_tick.bid + usdjpy_tick.ask) / 2.0
+
+                swap_long = swap_long_in_usd * usdjpy
+                swap_short = swap_short_in_usd * usdjpy
+
+                return swap_long, swap_short
         else:
             return math.nan, math.nan
     else:
