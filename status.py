@@ -182,12 +182,8 @@ def update_margin(it):
     lot = it.spinctrldouble_lot.GetValue()
     price = it.symbol_info.ask
 
-    if lot != 0.0:
-        margin = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, it.symbol, lot, price)
-        margin_per_lot = margin / lot
-    else:
-        margin = 0
-        margin_per_lot = 0
+    margin_per_lot = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, it.symbol, 1.0, price)
+    margin = margin_per_lot * lot
 
     it.statictext_margin_value.SetLabel(f'{margin:.{it.account_currency_digits}f}')
     it.statictext_margin_per_lot_value.SetLabel(f'{margin_per_lot:.{it.account_currency_digits}f}')
