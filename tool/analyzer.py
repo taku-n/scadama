@@ -56,7 +56,10 @@ def print_monthly(year, month):
                 continue
             if y.position_id == position_id:
                 close_price = y.price
-                difference = abs(close_price - open_price)
+                if x.type == 0:  # Buying.
+                    difference = close_price - open_price
+                else:  # Selling.
+                    difference = open_price - close_price
                 swap = y.swap
                 profit = y.profit
                 if profit >= 0:
